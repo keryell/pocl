@@ -1536,6 +1536,8 @@ struct ReferenceHandler<cl_event>
 
 
 // Extracts version number with major in the upper 16 bits, minor in the lower 16
+
+#if CL_HPP_TARGET_OPENCL_VERSION >= 120 && CL_HPP_MINIMUM_OPENCL_VERSION < 120
 static cl_uint getVersion(const vector<char> &versionInfo)
 {
     int highVersion = 0;
@@ -1555,7 +1557,6 @@ static cl_uint getVersion(const vector<char> &versionInfo)
     return (highVersion << 16) | lowVersion;
 }
 
-#if CL_HPP_TARGET_OPENCL_VERSION >= 120 && CL_HPP_MINIMUM_OPENCL_VERSION < 120
 static cl_uint getPlatformVersion(cl_platform_id platform)
 {
     size_type size = 0;
@@ -1783,7 +1784,7 @@ public:
 
     cl_type& operator ()() { return object_; }
 
-    const cl_type get() const { return object_; }
+    cl_type get() const { return object_; }
 
     cl_type get() { return object_; }
 
@@ -5808,6 +5809,10 @@ public:
 
     /*! \brief setArg overload taking a POD type
      */
+#if (__GNUC__ > 5)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
     template <typename T>
     typename std::enable_if<!std::is_pointer<T>::value, cl_int>::type
         setArg(cl_uint index, const T &value)
@@ -5820,6 +5825,9 @@ public:
                 detail::KernelArgumentHandler<T>::ptr(value)),
             __SET_KERNEL_ARGS_ERR);
     }
+#if (__GNUC__ > 5)
+#pragma GCC diagnostic pop
+#endif
 
     cl_int setArg(cl_uint index, size_type size, const void* argPtr)
     {
@@ -6105,6 +6113,11 @@ public:
      *   CL_INVALID_BINARY if an invalid program binary was encountered for any device. binaryStatus will return specific status for each device.
      *   CL_OUT_OF_HOST_MEMORY if there is a failure to allocate resources required by the OpenCL implementation on the host.
      */
+#if (__GNUC__ > 5)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
+
     Program(
         const Context& context,
         const vector<Device>& devices,
@@ -6163,7 +6176,10 @@ public:
         }
     }
 
-    
+#if (__GNUC__ > 5)
+#pragma GCC diagnostic pop
+#endif
+
 #if CL_HPP_TARGET_OPENCL_VERSION >= 120
     /**
      * Create program using builtin kernels.
@@ -6520,7 +6536,7 @@ inline cl_int cl::Program::getInfo(cl_program_info name, vector<vector<unsigned 
 
         // Resize the parameter array and constituent arrays
         param->resize(numBinaries);
-        for (int i = 0; i < numBinaries; ++i) {
+        for (unsigned i = 0; i < numBinaries; ++i) {
             (*param)[i].resize(sizes[i]);
         }
 

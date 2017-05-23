@@ -64,96 +64,17 @@ struct data {
 };
 
 static const cl_image_format supported_image_formats[] = {
-    { CL_R, CL_SNORM_INT8 },
-    { CL_R, CL_SNORM_INT16 },
-    { CL_R, CL_UNORM_INT8 },
-    { CL_R, CL_UNORM_INT16 },
-    { CL_R, CL_UNORM_SHORT_565 }, 
-    { CL_R, CL_UNORM_SHORT_555 },
-    { CL_R, CL_UNORM_INT_101010 }, 
-    { CL_R, CL_SIGNED_INT8 },
-    { CL_R, CL_SIGNED_INT16 }, 
-    { CL_R, CL_SIGNED_INT32 },
-    { CL_R, CL_UNSIGNED_INT8 }, 
-    { CL_R, CL_UNSIGNED_INT16 },
-    { CL_R, CL_UNSIGNED_INT32 }, 
-    { CL_R, CL_HALF_FLOAT },
-    { CL_R, CL_FLOAT },
-    { CL_Rx, CL_SNORM_INT8 },
-    { CL_Rx, CL_SNORM_INT16 },
-    { CL_Rx, CL_UNORM_INT8 },
-    { CL_Rx, CL_UNORM_INT16 },
-    { CL_Rx, CL_UNORM_SHORT_565 }, 
-    { CL_Rx, CL_UNORM_SHORT_555 },
-    { CL_Rx, CL_UNORM_INT_101010 }, 
-    { CL_Rx, CL_SIGNED_INT8 },
-    { CL_Rx, CL_SIGNED_INT16 }, 
-    { CL_Rx, CL_SIGNED_INT32 },
-    { CL_Rx, CL_UNSIGNED_INT8 }, 
-    { CL_Rx, CL_UNSIGNED_INT16 },
-    { CL_Rx, CL_UNSIGNED_INT32 }, 
-    { CL_Rx, CL_HALF_FLOAT },
-    { CL_Rx, CL_FLOAT },
     { CL_A, CL_SNORM_INT8 },
     { CL_A, CL_SNORM_INT16 },
     { CL_A, CL_UNORM_INT8 },
     { CL_A, CL_UNORM_INT16 },
-    { CL_A, CL_UNORM_SHORT_565 }, 
-    { CL_A, CL_UNORM_SHORT_555 },
-    { CL_A, CL_UNORM_INT_101010 }, 
     { CL_A, CL_SIGNED_INT8 },
     { CL_A, CL_SIGNED_INT16 }, 
     { CL_A, CL_SIGNED_INT32 },
     { CL_A, CL_UNSIGNED_INT8 }, 
     { CL_A, CL_UNSIGNED_INT16 },
     { CL_A, CL_UNSIGNED_INT32 }, 
-    { CL_A, CL_HALF_FLOAT },
     { CL_A, CL_FLOAT },
-    { CL_RG, CL_SNORM_INT8 },
-    { CL_RG, CL_SNORM_INT16 },
-    { CL_RG, CL_UNORM_INT8 },
-    { CL_RG, CL_UNORM_INT16 },
-    { CL_RG, CL_UNORM_SHORT_565 }, 
-    { CL_RG, CL_UNORM_SHORT_555 },
-    { CL_RG, CL_UNORM_INT_101010 }, 
-    { CL_RG, CL_SIGNED_INT8 },
-    { CL_RG, CL_SIGNED_INT16 }, 
-    { CL_RG, CL_SIGNED_INT32 },
-    { CL_RG, CL_UNSIGNED_INT8 }, 
-    { CL_RG, CL_UNSIGNED_INT16 },
-    { CL_RG, CL_UNSIGNED_INT32 }, 
-    { CL_RG, CL_HALF_FLOAT },
-    { CL_RG, CL_FLOAT },
-    { CL_RGx, CL_SNORM_INT8 },
-    { CL_RGx, CL_SNORM_INT16 },
-    { CL_RGx, CL_UNORM_INT8 },
-    { CL_RGx, CL_UNORM_INT16 },
-    { CL_RGx, CL_UNORM_SHORT_565 }, 
-    { CL_RGx, CL_UNORM_SHORT_555 },
-    { CL_RGx, CL_UNORM_INT_101010 }, 
-    { CL_RGx, CL_SIGNED_INT8 },
-    { CL_RGx, CL_SIGNED_INT16 }, 
-    { CL_RGx, CL_SIGNED_INT32 },
-    { CL_RGx, CL_UNSIGNED_INT8 }, 
-    { CL_RGx, CL_UNSIGNED_INT16 },
-    { CL_RGx, CL_UNSIGNED_INT32 }, 
-    { CL_RGx, CL_HALF_FLOAT },
-    { CL_RGx, CL_FLOAT },
-    { CL_RA, CL_SNORM_INT8 },
-    { CL_RA, CL_SNORM_INT16 },
-    { CL_RA, CL_UNORM_INT8 },
-    { CL_RA, CL_UNORM_INT16 },
-    { CL_RA, CL_UNORM_SHORT_565 }, 
-    { CL_RA, CL_UNORM_SHORT_555 },
-    { CL_RA, CL_UNORM_INT_101010 }, 
-    { CL_RA, CL_SIGNED_INT8 },
-    { CL_RA, CL_SIGNED_INT16 }, 
-    { CL_RA, CL_SIGNED_INT32 },
-    { CL_RA, CL_UNSIGNED_INT8 }, 
-    { CL_RA, CL_UNSIGNED_INT16 },
-    { CL_RA, CL_UNSIGNED_INT32 }, 
-    { CL_RA, CL_HALF_FLOAT },
-    { CL_RA, CL_FLOAT },
     { CL_RGBA, CL_SNORM_INT8 },
     { CL_RGBA, CL_SNORM_INT16 },
     { CL_RGBA, CL_UNORM_INT8 },
@@ -169,24 +90,6 @@ static const cl_image_format supported_image_formats[] = {
     { CL_RGBA, CL_UNSIGNED_INT32 }, 
     { CL_RGBA, CL_HALF_FLOAT },
     { CL_RGBA, CL_FLOAT },
-    { CL_INTENSITY, CL_UNORM_INT8 }, 
-    { CL_INTENSITY, CL_UNORM_INT16 }, 
-    { CL_INTENSITY, CL_SNORM_INT8 }, 
-    { CL_INTENSITY, CL_SNORM_INT16 }, 
-    { CL_INTENSITY, CL_HALF_FLOAT }, 
-    { CL_INTENSITY, CL_FLOAT },
-    { CL_LUMINANCE, CL_UNORM_INT8 }, 
-    { CL_LUMINANCE, CL_UNORM_INT16 }, 
-    { CL_LUMINANCE, CL_SNORM_INT8 }, 
-    { CL_LUMINANCE, CL_SNORM_INT16 }, 
-    { CL_LUMINANCE, CL_HALF_FLOAT }, 
-    { CL_LUMINANCE, CL_FLOAT },
-    { CL_RGB, CL_UNORM_SHORT_565 }, 
-    { CL_RGB, CL_UNORM_SHORT_555 },
-    { CL_RGB, CL_UNORM_INT_101010 }, 
-    { CL_RGBx, CL_UNORM_SHORT_565 }, 
-    { CL_RGBx, CL_UNORM_SHORT_555 },
-    { CL_RGBx, CL_UNORM_INT_101010 }, 
     { CL_ARGB, CL_SNORM_INT8 },
     { CL_ARGB, CL_UNORM_INT8 },
     { CL_ARGB, CL_SIGNED_INT8 },
@@ -242,7 +145,7 @@ pocl_basic_build_hash (cl_device_id device)
 }
 
 void
-pocl_basic_init_device_infos(struct _cl_device_id* dev)
+pocl_basic_init_device_infos(unsigned j, struct _cl_device_id* dev)
 {
   dev->type = CL_DEVICE_TYPE_CPU;
   dev->vendor_id = 0;
@@ -295,7 +198,9 @@ pocl_basic_init_device_infos(struct _cl_device_id* dev)
   dev->mem_base_addr_align = MAX_EXTENDED_ALIGNMENT*8; // this is in bits
   dev->half_fp_config = 0;
   dev->single_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_INF_NAN;
-  dev->double_fp_config = CL_FP_ROUND_TO_NEAREST | CL_FP_INF_NAN;
+  dev->double_fp_config = CL_FP_FMA | CL_FP_ROUND_TO_NEAREST
+                          | CL_FP_ROUND_TO_ZERO | CL_FP_ROUND_TO_INF
+                          | CL_FP_INF_NAN | CL_FP_DENORM;
   dev->global_mem_cache_type = CL_NONE;
   dev->global_mem_cacheline_size = 0;
   dev->global_mem_cache_size = 0;
@@ -313,6 +218,7 @@ pocl_basic_init_device_infos(struct _cl_device_id* dev)
   dev->available = CL_TRUE;
   dev->compiler_available = CL_TRUE;
   dev->spmd = CL_FALSE;
+  dev->workgroup_pass = CL_TRUE;
   dev->execution_capabilities = CL_EXEC_KERNEL | CL_EXEC_NATIVE_KERNEL;
   dev->platform = 0;
 
@@ -362,12 +268,7 @@ pocl_basic_init_device_infos(struct _cl_device_id* dev)
 #ifdef OCS_AVAILABLE
 
   dev->llvm_target_triplet = OCL_KERNEL_TARGET;
-
-#ifdef POCL_BUILT_WITH_CMAKE
   dev->llvm_cpu = get_cpu_name();
-#else
-  dev->llvm_cpu = OCL_KERNEL_TARGET_CPU;
-#endif
 
 #else
   dev->llvm_cpu = NULL;
@@ -392,13 +293,14 @@ pocl_basic_probe(struct pocl_device_ops *ops)
 
 
 
-void
-pocl_basic_init (cl_device_id device, const char* parameters)
+cl_int
+pocl_basic_init (unsigned j, cl_device_id device, const char* parameters)
 {
   struct data *d;
+  cl_int ret = CL_SUCCESS;
+  int err;
   static int first_basic_init = 1;
-  static int device_number = 0;
-  
+
   if (first_basic_init)
     {
       pocl_init_dlhandle_cache();
@@ -407,7 +309,9 @@ pocl_basic_init (cl_device_id device, const char* parameters)
   device->global_mem_id = 0;
 
   d = (struct data *) calloc (1, sizeof (struct data));
-  
+  if (d == NULL)
+    return CL_OUT_OF_HOST_MEMORY;
+
   d->current_kernel = NULL;
   d->current_dlhandle = 0;
   device->data = d;
@@ -417,7 +321,10 @@ pocl_basic_init (cl_device_id device, const char* parameters)
      initialize global_mem_size which it is not yet. Just put 
      a nonzero there for now. */
   device->global_mem_size = 1;
-  pocl_topology_detect_device_info(device);
+  err = pocl_topology_detect_device_info(device);
+  if (err)
+    ret = CL_INVALID_DEVICE;
+
   POCL_INIT_LOCK (d->cq_lock);
   pocl_cpuinfo_detect_device_info(device);
   pocl_set_buffer_image_limits(device);
@@ -429,8 +336,7 @@ pocl_basic_init (cl_device_id device, const char* parameters)
     device->vendor_id =
       magic[0] | magic[1] << 8 | magic[2] << 16 | magic[3] << 24;
 
-  device->vendor_id += device_number;
-  device_number++;
+  device->vendor_id += j;
 
   /* The basic driver represents only one "compute unit" as
      it doesn't exploit multiple hardware threads. Multiple
@@ -446,6 +352,7 @@ pocl_basic_init (cl_device_id device, const char* parameters)
   device->has_64bit_long=0;
   #endif
 
+  return ret;
 }
 
 cl_int
@@ -860,7 +767,7 @@ void pocl_basic_memfill(void *ptr,
       break;
     case 16:
       {
-      uint64_t * p = (uint64_t*)ptr + offset;
+      uint64_t * p = (uint64_t*)ptr + (offset << 1);
       for (i = 0; i < size; i++)
         for (j = 0; j < 2; j++)
           p[(i<<1) + j] = *((uint64_t*)pattern + j);
@@ -868,7 +775,7 @@ void pocl_basic_memfill(void *ptr,
       break;
     case 32:
       {
-      uint64_t * p = (uint64_t*)ptr + offset;
+      uint64_t * p = (uint64_t*)ptr + (offset << 2);
       for (i = 0; i < size; i++)
         for (j = 0; j < 4; j++)
           p[(i<<2) + j] = *((uint64_t*)pattern + j);
@@ -876,7 +783,7 @@ void pocl_basic_memfill(void *ptr,
       break;
     case 64:
       {
-      uint64_t * p = (uint64_t*)ptr + offset;
+      uint64_t * p = (uint64_t*)ptr + (offset << 3);
       for (i = 0; i < size; i++)
         for (j = 0; j < 8; j++)
           p[(i<<3) + j] = *((uint64_t*)pattern + j);
@@ -884,7 +791,7 @@ void pocl_basic_memfill(void *ptr,
       break;
     case 128:
       {
-      uint64_t * p = (uint64_t*)ptr + offset;
+      uint64_t * p = (uint64_t*)ptr + (offset << 4);
       for (i = 0; i < size; i++)
         for (j = 0; j < 16; j++)
           p[(i<<4) + j] = *((uint64_t*)pattern + j);

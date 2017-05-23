@@ -27,10 +27,7 @@
 #include <unistd.h>
 
 #include "config.h"
-
-#ifdef POCL_BUILT_WITH_CMAKE
 #include "pocl_build_timestamp.h"
-#endif
 
 #ifdef OCS_AVAILABLE
 #include "kernellib_hash.h"
@@ -624,8 +621,8 @@ void pocl_cache_cleanup_cachedir(cl_program program) {
             void* lock = acquire_program_lock(program, i, "_read", 0);
             if (!lock)
               {
-                POCL_MSG_PRINT(" *** WARNING *** ", "",
-                "Could not get an exclusive lock to remove program cachedir");
+                POCL_MSG_PRINT (WARN, "", "Could not get an exclusive lock "
+                                          "to remove program cachedir\n");
                 continue;
               }
             char cachedir[POCL_FILENAME_LENGTH];

@@ -40,20 +40,22 @@
 #endif
 
 #include "config.h"
-#include "pocl_image_util.h"
-#include "pocl_file_util.h"
-#include "pocl_util.h"
-#include "pocl_cache.h"
+#include "config2.h"
 #include "devices.h"
+#include "pocl_cache.h"
+#include "pocl_debug.h"
+#include "pocl_file_util.h"
+#include "pocl_image_util.h"
 #include "pocl_mem_management.h"
 #include "pocl_runtime_config.h"
-#include "pocl_debug.h"
+#include "pocl_util.h"
 
 #ifdef OCS_AVAILABLE
 #include "pocl_llvm.h"
 #endif
 
 #include "_kernel_constants.h"
+
 
 #define COMMAND_LENGTH 2048
 
@@ -69,9 +71,10 @@
 
 #ifdef OCS_AVAILABLE
 char*
-llvm_codegen (const char* tmpdir, cl_kernel kernel, cl_device_id device) {
+llvm_codegen (const char* tmpdir, cl_kernel kernel, cl_device_id device,
+              size_t local_x, size_t local_y, size_t local_z)
+{
 
-  char command[COMMAND_LENGTH];
   char bytecode[POCL_FILENAME_LENGTH];
   char objfile[POCL_FILENAME_LENGTH];
   /* strlen of / .so 4+1 */
@@ -101,6 +104,15 @@ llvm_codegen (const char* tmpdir, cl_kernel kernel, cl_device_id device) {
   void* write_lock = pocl_cache_acquire_writer_lock(kernel->program, device);
   assert(write_lock);
 
+  error = pocl_llvm_generate_workgroup_function (device, kernel,
+                                                 local_x, local_y, local_z);
+  if (error)
+    {
+      POCL_MSG_PRINT_GENERAL ("pocl_llvm_generate_workgroup_function() failed"
+                              " for kernel %s\n", kernel->name);
+      assert (error == 0);
+    }
+
   error = snprintf (bytecode, POCL_FILENAME_LENGTH,
 		    "%s%s", tmpdir, POCL_PARALLEL_BC_FILENAME);
   assert (error >= 0);
@@ -109,26 +121,28 @@ llvm_codegen (const char* tmpdir, cl_kernel kernel, cl_device_id device) {
   assert (error == 0);
 
   /* clang is used as the linker driver in LINK_CMD */
-  error = snprintf (command, COMMAND_LENGTH,
-#ifndef POCL_ANDROID
-#ifdef OCS_AVAILABLE
-                    CLANGXX " " HOST_CLANG_FLAGS " " HOST_LD_FLAGS " -o %s %s",
-#else
-                    LINK_COMMAND " " HOST_LD_FLAGS " -o %s %s",
-#endif
-#else
-                    POCL_ANDROID_PREFIX"/bin/ld " HOST_LD_FLAGS " -o %s %s ",
-#endif
-                    tmp_module, objfile);
-  assert (error >= 0);
 
-  POCL_MSG_PRINT_INFO ("executing [%s]\n", command);
-  error = system (command);
+  POCL_MSG_PRINT_INFO ("Linking final module\n");
+  char *const args1[]
+#ifndef POCL_ANDROID
+      = { LINK_COMMAND,
+          HOST_LD_FLAGS_ARRAY,
+          "-o",
+          tmp_module,
+          objfile,
+          NULL };
+#else
+      = { POCL_ANDROID_PREFIX "/bin/ld",
+          HOST_LD_FLAGS_ARRAY,
+          "-o",
+          tmp_module,
+          objfile,
+          NULL };
+#endif
+  error = pocl_run_command (args1);
   assert (error == 0);
 
-  error = snprintf (command, COMMAND_LENGTH, "mv %s %s", tmp_module, module);
-  assert (error >= 0);
-  error = system (command);
+  error = pocl_rename (tmp_module, module);
   assert (error == 0);
 
   /* Save space in kernel cache */
@@ -233,7 +247,6 @@ void
 pocl_ndrange_node_cleanup(_cl_command_node *node)
 {
   cl_uint i;
-  free (node->command.run.arg_buffers);
   free (node->command.run.tmp_dir);
   for (i = 0; i < node->command.run.kernel->num_args + 
        node->command.run.kernel->num_locals; ++i)
@@ -265,8 +278,11 @@ pocl_mem_objs_cleanup (cl_event event)
       POCL_UNLOCK_OBJ (event->mem_objs[i]);
       POname(clReleaseMemObject) (event->mem_objs[i]);
     }
+  free (event->mem_objs);
+  event->mem_objs = NULL;
 }
 
+static const size_t zero_origin[] = { 0, 0, 0 };
 /**
  * executes given command.
  */
@@ -328,17 +344,17 @@ pocl_exec_command (_cl_command_node * volatile node)
       break;
     case CL_COMMAND_WRITE_IMAGE:
       POCL_UPDATE_EVENT_RUNNING(event);
-      node->device->ops->write_rect
-        (node->device->data,
+      node->device->ops->write_rect (
+         node->device->data,
          node->command.write_image.host_ptr,
          node->command.write_image.device_ptr,
          node->command.write_image.origin,
-         node->command.write_image.origin,
+         zero_origin,
          node->command.write_image.region,
          node->command.write_image.b_rowpitch,
          node->command.write_image.b_slicepitch,
-         node->command.write_image.b_rowpitch,
-         node->command.write_image.b_slicepitch);
+         node->command.write_image.h_rowpitch,
+         node->command.write_image.h_slicepitch);
       POCL_UPDATE_EVENT_COMPLETE(event);
       break;
     case CL_COMMAND_WRITE_BUFFER_RECT:
@@ -359,16 +375,17 @@ pocl_exec_command (_cl_command_node * volatile node)
       break;
     case CL_COMMAND_READ_IMAGE:
       POCL_UPDATE_EVENT_RUNNING(event);
-      node->device->ops->read_rect
-        (node->device->data, node->command.read_image.host_ptr,
+      node->device->ops->read_rect (
+         node->device->data,
+         node->command.read_image.host_ptr,
          node->command.read_image.device_ptr,
          node->command.read_image.origin,
-         node->command.read_image.origin,
+         zero_origin,
          node->command.read_image.region,
          node->command.read_image.b_rowpitch,
          node->command.read_image.b_slicepitch,
-         node->command.read_image.b_rowpitch,
-         node->command.read_image.b_slicepitch);
+         node->command.read_image.h_rowpitch,
+         node->command.read_image.h_slicepitch);
       POCL_UPDATE_EVENT_COMPLETE(event);
       POCL_DEBUG_EVENT_TIME(event, "Read Image            ");
       break;
@@ -392,17 +409,69 @@ pocl_exec_command (_cl_command_node * volatile node)
     case CL_COMMAND_COPY_IMAGE_TO_BUFFER:
     case CL_COMMAND_COPY_IMAGE:
       POCL_UPDATE_EVENT_RUNNING(event);
-      node->device->ops->copy_rect
-        (node->device->data,
-         node->command.copy_image.src_ptr,
-         node->command.copy_image.dst_ptr,
-         node->command.copy_image.src_origin,
-         node->command.copy_image.dst_origin,
-         node->command.copy_image.region,
-         node->command.copy_image.src_rowpitch,
-         node->command.copy_image.src_slicepitch,
-         node->command.copy_image.dst_rowpitch,
-         node->command.copy_image.dst_slicepitch);
+      cl_device_id src_dev = node->command.copy_image.src_device;
+      cl_mem src_buf = node->command.copy_image.src_buffer;
+      cl_device_id dst_dev = node->command.copy_image.dst_device;
+      cl_mem dst_buf = node->command.copy_image.dst_buffer;
+
+      /* if source and destination are in the same global mem  */
+      if (src_dev->global_mem_id == dst_dev->global_mem_id)
+        {
+          node->device->ops->copy_rect
+            (node->device->data,
+             src_buf->device_ptrs[src_dev->dev_id].mem_ptr,
+             dst_buf->device_ptrs[dst_dev->dev_id].mem_ptr,
+             node->command.copy_image.src_origin,
+             node->command.copy_image.dst_origin,
+             node->command.copy_image.region,
+             node->command.copy_image.src_rowpitch,
+             node->command.copy_image.src_slicepitch,
+             node->command.copy_image.dst_rowpitch,
+             node->command.copy_image.dst_slicepitch);
+        }
+      /* if source and destination are in different global mem
+         data needs to be read to the host memory and then written to
+         destination device */
+      else
+        {
+          size_t size = node->command.copy_image.region[0]
+            * node->command.copy_image.region[1]
+            * node->command.copy_image.region[2];
+          void *tmp = malloc (size);
+
+          /* origin and slice pitch for tmp buffer */
+          const size_t null_origin[3] = {0, 0, 0};
+          size_t tmp_rowpitch =
+            node->command.copy_image.region[0];
+          size_t tmp_slicepitch =
+            node->command.copy_image.region[0]
+            * node->command.copy_image.region[1];
+
+          src_dev->ops->read_rect
+            (src_dev->data,
+             tmp,
+             src_buf->device_ptrs[src_dev->dev_id].mem_ptr,
+             node->command.copy_image.src_origin,
+             null_origin,
+             node->command.copy_image.region,
+             node->command.copy_image.src_rowpitch,
+             node->command.copy_image.src_slicepitch,
+             tmp_rowpitch,
+             tmp_slicepitch);
+
+          dst_dev->ops->write_rect
+            (dst_dev->data,
+             tmp,
+             dst_buf->device_ptrs[dst_dev->dev_id].mem_ptr,
+             node->command.copy_image.dst_origin,
+             null_origin,
+             node->command.copy_image.region,
+             node->command.copy_image.dst_rowpitch,
+             node->command.copy_image.dst_slicepitch,
+             tmp_rowpitch,
+             tmp_slicepitch);
+          free (tmp);
+        }
       POCL_UPDATE_EVENT_COMPLETE(event);
       POCL_DEBUG_EVENT_TIME(event, "Copy Buffer Rect      ");
       break;
@@ -427,9 +496,11 @@ pocl_exec_command (_cl_command_node * volatile node)
                (node->command.unmap.mapping)->offset,
                (node->command.unmap.mapping)->size);
         }
+      POCL_LOCK_OBJ (node->command.unmap.memobj);
       DL_DELETE((node->command.unmap.memobj)->mappings, 
                 node->command.unmap.mapping);
       (node->command.unmap.memobj)->map_count--;
+      POCL_UNLOCK_OBJ (node->command.unmap.memobj);
       POCL_UPDATE_EVENT_COMPLETE(event);
       POCL_DEBUG_EVENT_TIME(event, "Unmap Mem obj         ");
       break;
@@ -586,13 +657,13 @@ pocl_broadcast (cl_event brc_event)
 void
 fill_dev_sampler_t (dev_sampler_t *ds, struct pocl_argument *parg)
 {
-  cl_sampler_t sampler = *(cl_sampler_t *)parg->value;
+  cl_sampler sampler = *(cl_sampler *)parg->value;
 
-  *ds = 0;
-  *ds |= sampler.normalized_coords == CL_TRUE ? CLK_NORMALIZED_COORDS_TRUE :
-      CLK_NORMALIZED_COORDS_FALSE;
+  *ds = (sampler->normalized_coords == CL_TRUE) ? CLK_NORMALIZED_COORDS_TRUE
+                                                : CLK_NORMALIZED_COORDS_FALSE;
 
-  switch (sampler.addressing_mode) {
+  switch (sampler->addressing_mode)
+    {
     case CL_ADDRESS_NONE:
       *ds |= CLK_ADDRESS_NONE; break;
     case CL_ADDRESS_CLAMP_TO_EDGE:
@@ -605,7 +676,8 @@ fill_dev_sampler_t (dev_sampler_t *ds, struct pocl_argument *parg)
       *ds |= CLK_ADDRESS_MIRRORED_REPEAT; break;
   }
 
-  switch (sampler.filter_mode) {
+  switch (sampler->filter_mode)
+    {
     case CL_FILTER_NEAREST:
       *ds |= CLK_FILTER_NEAREST; break;
     case CL_FILTER_LINEAR :
@@ -715,7 +787,10 @@ pocl_check_dlhandle_cache (_cl_command_node *cmd)
       POCL_LOCK (pocl_llvm_codegen_lock);
       module_fn = (char *)llvm_codegen (cmd->command.run.tmp_dir,
                                         cmd->command.run.kernel,
-                                        cmd->device);
+                                        cmd->device,
+                                        cmd->command.run.local_x,
+                                        cmd->command.run.local_y,
+                                        cmd->command.run.local_z);
       POCL_UNLOCK (pocl_llvm_codegen_lock);
       POCL_MSG_PRINT_INFO("Using static WG size binary: %s\n", module_fn);
 #else
@@ -822,7 +897,7 @@ pocl_setup_device_for_system_memory(cl_device_id device)
        */
       size_t alloc_limit = device->global_mem_size;
       if ((alloc_limit >> 20) > (7 << 10))
-        system_memory.total_alloc_limit = alloc_limit - (size_t)(1 << 31);
+        system_memory.total_alloc_limit = alloc_limit - (size_t)(1UL << 31);
       else
         {
           size_t temp = (alloc_limit >> 2);
@@ -874,9 +949,13 @@ pocl_set_buffer_image_limits(cl_device_id device)
 {
   pocl_setup_device_for_system_memory(device);
   /* these aren't set up in pocl_setup_device_for_system_memory,
-   * because some devices (HSA) set them up themselves */
+   * because some devices (HSA) set them up themselves
+   *
+   * it's max mem alloc / 4 because some programs (conformance test)
+   * try to allocate max size constant objects and run out of memory
+   * while trying to fill them. */
   device->local_mem_size = device->max_constant_buffer_size =
-      device->max_mem_alloc_size;
+      (device->max_mem_alloc_size / 4);
 
   /* We don't have hardware limitations on the buffer-backed image sizes,
    * so we set the maximum size in terms of the maximum amount of pixels
@@ -948,7 +1027,7 @@ pocl_free_global_mem(cl_device_id device, void* ptr, size_t size)
 void
 pocl_print_system_memory_stats()
 {
-  POCL_MSG_PRINT("MEM STATS:\n", "",
+  POCL_MSG_PRINT_F (MEMORY, INFO, "",
   "____ Total available system memory  : %10zu KB\n"
   " ____ Currently used system memory   : %10zu KB\n"
   " ____ Max used system memory         : %10zu KB\n",

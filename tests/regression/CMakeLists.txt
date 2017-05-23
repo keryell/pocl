@@ -27,6 +27,7 @@
 if(NOT APPLE)
 
 set(C_PROGRAMS_TO_BUILD test_assign_loop_variable_to_privvar_makes_it_local
+     test_program_from_binary_with_local_1_1_1
      test_assign_loop_variable_to_privvar_makes_it_local_2)
 foreach(PROG ${C_PROGRAMS_TO_BUILD})
   if(MSVC)
@@ -43,7 +44,8 @@ set(PROGRAMS_TO_BUILD test_barrier_between_for_loops test_early_return
   test_simple_for_with_a_barrier test_structs_as_args test_vectors_as_args
   test_barrier_before_return test_infinite_loop test_constant_array
   test_undominated_variable test_setargs test_null_arg
-  test_fors_with_var_iteration_counts test_issue_231)
+  test_fors_with_var_iteration_counts test_issue_231 test_issue_445
+  test_autolocals_in_constexprs)
 
 
 if (MSVC)
@@ -95,6 +97,9 @@ add_test_pocl(NAME "regression/assigning_a_loop_iterator_variable_to_a_private_m
 add_test_pocl(NAME "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_2_REPL"
               COMMAND "test_assign_loop_variable_to_privvar_makes_it_local_2")
 
+add_test_pocl(NAME "regression/test_program_from_binary_with_local_1_1_1_REPL"
+              COMMAND "test_program_from_binary_with_local_1_1_1")
+
 set_tests_properties("regression/phi_nodes_not_replicated_REPL"
   "regression/issues_with_local_pointers_REPL"
   "regression/barrier_between_two_for_loops_REPL"
@@ -108,6 +113,7 @@ set_tests_properties("regression/phi_nodes_not_replicated_REPL"
   "regression/undominated_variable_from_conditional_barrier_handling_REPL"
   "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_REPL"
   "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_2_REPL"
+  "regression/test_program_from_binary_with_local_1_1_1_REPL"
   PROPERTIES
     ENVIRONMENT "POCL_WORK_GROUP_METHOD=workitemrepl"
     COST 1.5
@@ -146,6 +152,9 @@ add_test_pocl(NAME "regression/assigning_a_loop_iterator_variable_to_a_private_m
 add_test_pocl(NAME "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_2_LOOPS"
               COMMAND "test_assign_loop_variable_to_privvar_makes_it_local_2")
 
+add_test_pocl(NAME "regression/test_program_from_binary_with_local_1_1_1_LOOPS"
+              COMMAND "test_program_from_binary_with_local_1_1_1")
+
 set_tests_properties("regression/phi_nodes_not_replicated_LOOPS"
   "regression/issues_with_local_pointers_LOOPS"
   "regression/barrier_between_two_for_loops_LOOPS"
@@ -159,6 +168,7 @@ set_tests_properties("regression/phi_nodes_not_replicated_LOOPS"
   "regression/undominated_variable_from_conditional_barrier_handling_LOOPS"
   "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_LOOPS"
   "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_2_LOOPS"
+  "regression/test_program_from_binary_with_local_1_1_1_LOOPS"
   PROPERTIES
     ENVIRONMENT "POCL_WORK_GROUP_METHOD=workitemloops"
     COST 1.5
@@ -177,6 +187,8 @@ add_test_pocl(NAME "regression/passing_a_constant_array_as_an_arg" COMMAND "test
 
 add_test_pocl(NAME "regression/case_with_multiple_variable_length_loops_and_a_barrier_in_one" COMMAND "test_fors_with_var_iteration_counts")
 
+add_test_pocl(NAME "regression/autolocals_in_constexprs" COMMAND "test_autolocals_in_constexprs")
+
 # these 2 will fail
 add_test_pocl(NAME "regression/struct_kernel_arguments" COMMAND "test_structs_as_args")
 
@@ -187,6 +199,7 @@ set_tests_properties("regression/setting_a_buffer_argument_to_NULL_causes_a_segf
   "regression/passing_a_constant_array_as_an_arg"
   "regression/case_with_multiple_variable_length_loops_and_a_barrier_in_one"
   "regression/struct_kernel_arguments" "regression/vector_kernel_arguments"
+  "regression/autolocals_in_constexprs"
   PROPERTIES
     COST 1.5
     PROCESSORS 1
@@ -203,6 +216,39 @@ set_tests_properties("regression/barrier_between_two_for_loops_LOOPS"
   "regression/early_return_before_a_barrier_region_LOOPS"
   PROPERTIES
     LABELS "internal;regression;tce")
+
+# Label tests that work with CUDA backend
+set_property(TEST
+  "regression/phi_nodes_not_replicated_REPL"
+  "regression/issues_with_local_pointers_REPL"
+  "regression/barrier_between_two_for_loops_REPL"
+  "regression/simple_for-loop_with_a_barrier_inside_REPL"
+  "regression/for-loop_with_computation_after_the_brexit_REPL"
+  "regression/for-loop_with_a_variable_iteration_count_REPL"
+  "regression/early_return_before_a_barrier_region_REPL"
+  "regression/id-dependent_computation_before_kernel_exit_REPL"
+  "regression/barrier_just_before_return_REPL"
+  "regression/undominated_variable_from_conditional_barrier_handling_REPL"
+  "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_REPL"
+  "regression/test_program_from_binary_with_local_1_1_1_REPL"
+  "regression/phi_nodes_not_replicated_LOOPS"
+  "regression/issues_with_local_pointers_LOOPS"
+  "regression/barrier_between_two_for_loops_LOOPS"
+  "regression/simple_for-loop_with_a_barrier_inside_LOOPS"
+  "regression/for-loop_with_computation_after_the_brexit_LOOPS"
+  "regression/for-loop_with_a_variable_iteration_count_LOOPS"
+  "regression/early_return_before_a_barrier_region_LOOPS"
+  "regression/id-dependent_computation_before_kernel_exit_LOOPS"
+  "regression/barrier_just_before_return_LOOPS"
+  "regression/undominated_variable_from_conditional_barrier_handling_LOOPS"
+  "regression/assigning_a_loop_iterator_variable_to_a_private_makes_it_local_LOOPS"
+  "regression/test_program_from_binary_with_local_1_1_1_LOOPS"
+  "regression/setting_a_buffer_argument_to_NULL_causes_a_segfault"
+  "regression/clSetKernelArg_overwriting_the_previous_kernel's_args"
+  "regression/case_with_multiple_variable_length_loops_and_a_barrier_in_one"
+  "regression/vector_kernel_arguments"
+  "regression/autolocals_in_constexprs"
+  APPEND PROPERTY LABELS "cuda")
 
 # The vector/struct kernel arguments are known to be flaky and
 # work by luck sometimes. Disable them for now.

@@ -1,7 +1,7 @@
 #=============================================================================
 #   CMake build system files
 #
-#   Copyright (c) 2014 pocl developers
+#   Copyright (c) 2014-2017 pocl developers
 #
 #   Permission is hereby granted, free of charge, to any person obtaining a copy
 #   of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,7 @@ cmake_minimum_required(VERSION 2.8.12 FATAL_ERROR)
 
 project(pocl)
 set(MAJOR_VERSION 0)
-set(MINOR_VERSION 14)
+set(MINOR_VERSION 15)
 set(VERSION_SUFFIX "-pre")
 set(VERSION_STRING ${MAJOR_VERSION}.${MINOR_VERSION}${VERSION_SUFFIX})
 set(POCL_VERSION ${VERSION_STRING})
@@ -49,7 +49,11 @@ option(POCL_DEBUG_MESSAGES
 
 option(ENABLE_HSA "Enable the HSA device driver for AMD GCN devices" OFF)
 
+option(ENABLE_CUDA "Enable the CUDA device driver for NVIDIA devices" OFF)
+
 option(KERNEL_CACHE_DEFAULT "Default value for the kernel compile cache. If disabled, pocl will still use the kernel cache, but will delete cachefiles on exit. You can still enable keeping the files it at runtime with an env var." ON)
+
+option(DEVELOPER_MODE "This will SIGNIFICANTLY slow down pocl (but speed up its compilation). Only turn on if you know what you're doing." OFF)
 
 # currently only works with gcc as host compiler
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -131,7 +135,7 @@ set(POCL_INSTALL_PUBLIC_LIBDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}"
 set(POCL_INSTALL_PRIVATE_LIBDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/pocl" CACHE PATH "POCL private libdir")
 
 # for pocl.icd
-if(UNIX AND NOT CMAKE_CROSSCOMPILING)
+if(UNIX AND (NOT CMAKE_CROSSCOMPILING) AND (CMAKE_INSTALL_PREFIX STREQUAL "/usr"))
   set(POCL_INSTALL_ICD_VENDORDIR "/etc/OpenCL/vendors" CACHE PATH "POCL ICD file destination")
 else()
   set(POCL_INSTALL_ICD_VENDORDIR "${CMAKE_INSTALL_PREFIX}/etc/OpenCL/vendors" CACHE PATH "POCL ICD file destination")
@@ -179,7 +183,7 @@ endif()
 
 ######################################################################################
 
-set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 find_package( Hwloc )
 
 if(NOT Hwloc_FOUND)
@@ -346,7 +350,7 @@ if(UNIX)
     # MacOS ld outputs useless warnings like
     # ld: warning: -macosx_version_min not specificed, assuming 10.7
     # suppress them with -w.
-    set(DEFAULT_HOST_LD_FLAGS "-Wl,-dylib -lm")
+    set(DEFAULT_HOST_LD_FLAGS "-dylib -w -lm")
   elseif(ANDROID_COMPILER)
     set(DEFAULT_HOST_LD_FLAGS "-L/system/lib/ -shared -ldl -lc -lm /system/lib/crtbegin_so.o /system/lib/crtend_so.o")
   else()
@@ -361,7 +365,7 @@ endif()
 
 option(USE_VECMATHLIB_BUILTINS_ONLY "Use only __builtin_* functions in the kernel library." OFF)
 
-set(DEFAULT_KERNEL_CL_FLAGS "-Xclang -cl-std=CL2.0 -D__OPENCL_C_VERSION__=200")
+set(DEFAULT_KERNEL_CL_FLAGS "")
 if(USE_VECMATHLIB)
   set(DEFAULT_KERNEL_CLANGXX_FLAGS "-DVML_NO_IOSTREAM ${CLANGXX_STDLIB}")
   if(USE_VECMATHLIB_BUILTINS_ONLY)
@@ -637,23 +641,29 @@ if(CL_DISABLE_HALF)
   set(DEFAULT_HOST_CLANG_FLAGS "${DEFAULT_HOST_CLANG_FLAGS} -D_CL_DISABLE_HALF")
 endif()
 
+set(HOST_DEVICE_CL_VERSION "120")
+set(HOST_DEVICE_CL_STD "1.2")
+
 # define it here, b/c we'll need these both at runtime and buildtime
-set(HOST_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_spir")
+set(HOST_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics")
+if((HOST_DEVICE_CL_VERSION GREATER 199) AND (CLANG_SPIR))
+  set(HOST_DEVICE_EXTENSIONS "${HOST_DEVICE_EXTENSIONS} cl_khr_spir")
+endif()
 if(NOT CL_DISABLE_HALF)
   set(HOST_DEVICE_EXTENSIONS "${HOST_DEVICE_EXTENSIONS} cl_khr_fp16")
 endif()
 if(NOT CL_DISABLE_LONG)
-  set(HOST_DEVICE_EXTENSIONS "${HOST_DEVICE_EXTENSIONS} cl_khr_int64 cl_khr_fp64 cl_khr_int64_base_atomics cl_khr_int64_extended_atomics")
+  set(HOST_DEVICE_EXTENSIONS "${HOST_DEVICE_EXTENSIONS} cl_khr_fp64 cl_khr_int64_base_atomics cl_khr_int64_extended_atomics")
+  # must not be defined in HOST_DEVICE_EXTENSIONS list, because
+  # this extension doesn't exist in official extension list
+  set(HOST_DEVICE_EXTENSION_DEFINES "-Dcl_khr_int64")
 endif()
 
 set(TEMP_EXT "${HOST_DEVICE_EXTENSIONS}")
-set(HOST_DEVICE_EXTENSION_DEFINES "")
 separate_arguments(TEMP_EXT)
 foreach(EXT ${TEMP_EXT})
   set(HOST_DEVICE_EXTENSION_DEFINES "${HOST_DEVICE_EXTENSION_DEFINES} -D${EXT}")
 endforeach()
-
-set(HOST_DEVICE_CL_VERSION "200")
 
 if(NOT DEFINED KERNELLIB_HOST_CPU_VARIANTS)
   set(KERNELLIB_HOST_CPU_VARIANTS "native")
@@ -681,6 +691,10 @@ set(EXTRA_HOST_LLC_FLAGS "" CACHE STRING "Extra parameters to llc for code gener
 
 set(HOST_AS_FLAGS "${DEFAULT_HOST_AS_FLAGS} ${EXTRA_HOST_AS_FLAGS}")
 set(HOST_LD_FLAGS "${DEFAULT_HOST_LD_FLAGS} ${EXTRA_HOST_LD_FLAGS}" )
+string(STRIP "${HOST_LD_FLAGS}" HOST_LD_FLAGS_STRIPPED)
+string(REGEX REPLACE "[\r\n\t ]+" "\", \"" HOST_LD_FLAGS_ARRAY "${HOST_LD_FLAGS_STRIPPED}")
+# string(REPLACE "###, ###" " oo \", \" oo " HOST_LD_FLAGS_ARRAY "${HOST_LD_FLAGS_ARRAY_1}")
+
 set(HOST_CLANG_FLAGS "${DEFAULT_HOST_CLANG_FLAGS} ${EXTRA_HOST_CLANG_FLAGS}")
 set(HOST_LLC_FLAGS "${DEFAULT_HOST_LLC_FLAGS} ${EXTRA_HOST_LLC_FLAGS}")
 
@@ -788,6 +802,7 @@ if(ENABLE_TCE)
   endforeach()
 
   set(TCE_DEVICE_CL_VERSION "120")
+  set(TCE_DEVICE_CL_STD "1.2")
 
   if("${LLVM_CXXFLAGS}" MATCHES "-fno-rtti")
     message(WARNING "TCE is enabled but your LLVM was not built with RTTI. You should rebuild LLVM with 'make REQUIRES_RTTI=1'. See the INSTALL file for more information.")
@@ -812,9 +827,30 @@ if(ENABLE_HSA)
   set(OCL_TARGETS "${OCL_TARGETS} hsail64")
   # this is for config.h
 
-  set(HSA_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_int64 cl_khr_fp64 cl_khr_int64_base_atomics cl_khr_int64_extended_atomics")
+  set(HSA_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_fp64 cl_khr_int64_base_atomics cl_khr_int64_extended_atomics")
   set(HSA_DEVICE_CL_VERSION "200")
+  set(HSA_DEVICE_CL_STD "2.0")
   find_path(HAVE_HSA_EXT_AMD_H "hsa_ext_amd.h" HINTS "${HSA_INCLUDEDIR}" ENV PATH)
+endif()
+
+##########################################################
+
+if(ENABLE_CUDA)
+
+  # Require LLVM 4.0 or newer
+  if ("${LLVM_MAJOR}" STRLESS "4")
+    message(FATAL_ERROR "The CUDA backend requires LLVM 4.0 or newer")
+  endif()
+
+  set(OCL_DRIVERS "${OCL_DRIVERS} cuda")
+  set(OCL_TARGETS "${OCL_TARGETS} cuda")
+  # this is for config.h
+  # TODO unify with autotools
+  set(BUILD_CUDA 1)
+
+  set(CUDA_DEVICE_EXTENSIONS "cl_khr_byte_addressable_store cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_fp64 cl_khr_int64_base_atomics cl_khr_int64_extended_atomics")
+  set(CUDA_DEVICE_CL_VERSION "120")
+  set(CUDA_DEVICE_CL_STD "1.2")
 endif()
 
 ##########################################################
@@ -950,6 +986,29 @@ set(PACKAGE_VERSION "${POCL_VERSION}")
 
 configure_file("config.h.in.cmake" "config.h.new" ESCAPE_QUOTES)
 rename_if_different("${CMAKE_BINARY_DIR}/config.h.new" "${CMAKE_BINARY_DIR}/config.h")
+
+configure_file("config2.h.in.cmake" "config2.h.new")
+rename_if_different("${CMAKE_BINARY_DIR}/config2.h.new" "${CMAKE_BINARY_DIR}/config2.h")
+
+# This is used to generate the compiler feature detection header.
+# Currently it's not enabled because it requires CMake > 3.x and
+# also the autogenerated header needs some editing by hand
+# (it errors on all compilers except gcc > 4 and clang > 3)
+#
+#
+#include(WriteCompilerDetectionHeader)
+#write_compiler_detection_header(
+#  FILE "${CMAKE_BINARY_DIR}/compiler_features.h"
+#  PREFIX POCL
+#  COMPILERS GNU Clang
+#  FEATURES
+#    c_function_prototypes
+#    c_restrict
+#    c_static_assert
+#    c_variadic_macros
+#)
+
+
 include_directories("${CMAKE_BINARY_DIR}")
 
 # autotools compat
@@ -1126,6 +1185,7 @@ MESSAGE(STATUS "ENABLE_ICD: ${ENABLE_ICD}")
 MESSAGE(STATUS "ENABLE_TCE: ${ENABLE_TCE}")
 MESSAGE(STATUS "ENABLE_TCEMC: ${ENABLE_TCEMC}")
 MESSAGE(STATUS "ENABLE_HSA: ${ENABLE_HSA}")
+MESSAGE(STATUS "ENABLE_CUDA: ${ENABLE_CUDA}")
 MESSAGE(STATUS "ENABLE_ASAN (address sanitizer): ${ENABLE_ASAN}")
 MESSAGE(STATUS "INSTALL_OPENCL_HEADERS (Install our headers): ${INSTALL_OPENCL_HEADERS}")
 MESSAGE(STATUS "OCL_DRIVERS (Drivers built): ${OCL_DRIVERS}")

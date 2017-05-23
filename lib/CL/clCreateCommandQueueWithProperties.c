@@ -44,9 +44,11 @@ POname(clCreateCommandQueueWithProperties)(cl_context context,
 
   POCL_GOTO_ERROR_COND((context == NULL), CL_INVALID_CONTEXT);
 
+  POCL_GOTO_ERROR_COND ((device == NULL), CL_INVALID_DEVICE);
+
   for (i=0; i<context->num_devices; i++)
     {
-      if (context->devices[i] == POCL_REAL_DEV(device))
+      if (context->devices[i] == pocl_real_dev (device))
         found = CL_TRUE;
     }
 
@@ -80,6 +82,9 @@ POname(clCreateCommandQueueWithProperties)(cl_context context,
 
           POCL_GOTO_ERROR_COND((queue_size > device->dev_queue_max_size),
                                CL_INVALID_QUEUE_PROPERTIES);
+
+         // create a device side queue
+         POCL_ABORT_UNIMPLEMENTED("Device side queue");
         }
       else
         POCL_GOTO_ERROR_ON((queue_size > 0), CL_INVALID_VALUE,
@@ -88,14 +93,10 @@ POname(clCreateCommandQueueWithProperties)(cl_context context,
       /* validate flags */
       POCL_GOTO_ERROR_ON((queue_props & (!valid_prop_flags)), CL_INVALID_VALUE,
                          "CL_QUEUE_PROPERTIES contain invalid entries");
+    }
 
-      // create a device side queue
-      POCL_ABORT_UNIMPLEMENTED("Device side queue");
-    }
-  else // create a host side queue.
-    {
-      return POname(clCreateCommandQueue)(context, device, queue_props, errcode_ret);
-    }
+  // currently thhere's only support for host side queues.
+  return POname(clCreateCommandQueue)(context, device, queue_props, errcode_ret);
 
 ERROR:
   if(errcode_ret)

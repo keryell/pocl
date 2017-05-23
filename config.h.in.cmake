@@ -1,4 +1,3 @@
-
 /* The normal alignment of `double16', in bytes. */
 #define ALIGNOF_DOUBLE16 @ALIGNOF_DOUBLE16@
 
@@ -6,37 +5,22 @@
 #define ALIGNOF_FLOAT16 @ALIGNOF_FLOAT16@
 
 #cmakedefine BUILD_HSA
-
-#define POCL_BUILT_WITH_CMAKE
+#cmakedefine BUILD_CUDA
 
 #define BUILDDIR "@BUILDDIR@"
 
 /* "Build with ICD" */
 #cmakedefine BUILD_ICD
 
-#ifndef LLVM_VERSION
-#define LLVM_VERSION "@LLVM_VERSION_FULL@"
-#endif
+#cmakedefine CLANG_IS_PATCHED_FOR_SPIR_CC
 
 #define CLANG "@CLANG@"
-
-/* clang++ executable */
-#define CLANGXX "@CLANGXX@"
-
-#define HSAIL_ASM "@HSAIL_ASM@"
-
-/* clang++ compiler flags */
-/* TODO in sources */
-#define KERNEL_CLANGXX_FLAGS "@KERNEL_CLANGXX_FLAGS@"
 
 /* "Using a SPIR generator Clang from Khronos." */
 #cmakedefine CLANG_SPIR
 
-
-/* TODO in sources */
-#define KERNEL_CL_FLAGS  "@KERNEL_CL_FLAGS@"
-
-
+/* clang++ executable */
+#define CLANGXX "@CLANGXX@"
 
 #define FORCED_CLFLAGS  "@FORCED_CLFLAGS@"
 
@@ -54,7 +38,6 @@
 #cmakedefine HAVE_POSIX_MEMALIGN
 
 #cmakedefine HAVE_HSA_EXT_AMD_H
-
 
 #define HOST  "@HOST@"
 
@@ -76,9 +59,19 @@
 
 #define HSA_DEVICE_EXTENSIONS "@HSA_DEVICE_EXTENSIONS@"
 
+#define HSAIL_ASM "@HSAIL_ASM@"
+
+
 #define KERNELLIB_HOST_CPU_VARIANTS "@KERNELLIB_HOST_CPU_VARIANTS@"
 
 #cmakedefine KERNELLIB_HOST_DISTRO_VARIANTS
+
+/* clang++ compiler flags */
+/* TODO in sources */
+#define KERNEL_CLANGXX_FLAGS "@KERNEL_CLANGXX_FLAGS@"
+
+/* TODO in sources */
+#define KERNEL_CL_FLAGS  "@KERNEL_CL_FLAGS@"
 
 #define LLVM_LLC "@LLVM_LLC@"
 
@@ -97,14 +90,16 @@
 /* "Using LLVM 4.0" */
 #cmakedefine LLVM_4_0
 
-#cmakedefine POCL_USE_FAKE_ADDR_SPACE_IDS
+#cmakedefine LLVM_BUILD_MODE_DEBUG
+
+#ifndef LLVM_VERSION
+#define LLVM_VERSION "@LLVM_VERSION_FULL@"
+#endif
 
 #define LINK_COMMAND "@LINK_COMMAND@"
 
 /* Defined to greatest expected alignment for extended types, in bytes. */
 #define MAX_EXTENDED_ALIGNMENT @MAX_EXTENDED_ALIGNMENT@
-
-
 
 /* used in lib/CL/devices/basic */
 #define OCL_KERNEL_TARGET  "@OCL_KERNEL_TARGET@"
@@ -114,6 +109,7 @@
 
 #define PACKAGE_VERSION "@PACKAGE_VERSION@"
 
+#define POCL_KCACHE_SALT "@POCL_KCACHE_SALT@"
 
 #define POCL_KERNEL_CACHE_DEFAULT @POCL_KERNEL_CACHE_DEFAULT@
 
@@ -125,13 +121,9 @@
 
 #define POCL_INSTALL_PRIVATE_DATADIR "@POCL_INSTALL_PRIVATE_DATADIR@"
 
+#cmakedefine POCL_USE_FAKE_ADDR_SPACE_IDS
+
 /* these are *host* values */
-
-/* The size of `__fp16', as computed by sizeof. */
-#define SIZEOF___FP16  @SIZEOF___FP16@
-
-#cmakedefine CLANG_IS_PATCHED_FOR_SPIR_CC
-#cmakedefine POCL_KCACHE_SALT "@POCL_KCACHE_SALT@"
 
 /* used in tce_common.c & pocl_llvm_api.cc  */
 #define SRCDIR  "@SRCDIR@"
@@ -149,19 +141,22 @@
 /* Defined on big endian systems */
 #define WORDS_BIGENDIAN @WORDS_BIGENDIAN@
 
-/* Disable cl_khr_int64 when a clang bug is present */
+/* Disable 64bit ints when a clang bug is present */
 #cmakedefine _CL_DISABLE_LONG
 
 /* Disable cl_khr_fp16 because fp16 is not supported */
 #cmakedefine _CL_DISABLE_HALF
 
-#define POCL_CL_VERSION "2.0"
+#define POCL_CL_VERSION "1.2"
 
 #define HSA_DEVICE_CL_VERSION_MAJOR 2
 #define HSA_DEVICE_CL_VERSION_MINOR 0
 
-#define HOST_DEVICE_CL_VERSION_MAJOR 2
-#define HOST_DEVICE_CL_VERSION_MINOR 0
+#define CUDA_DEVICE_CL_VERSION_MAJOR 1
+#define CUDA_DEVICE_CL_VERSION_MINOR 2
+
+#define HOST_DEVICE_CL_VERSION_MAJOR 1
+#define HOST_DEVICE_CL_VERSION_MINOR 2
 
 #define TCE_DEVICE_CL_VERSION_MAJOR 1
 #define TCE_DEVICE_CL_VERSION_MINOR 2

@@ -103,7 +103,7 @@ pocl_ttasim_init_device_ops(struct pocl_device_ops *ops)
 
 
 void
-pocl_ttasim_init_device_infos(struct _cl_device_id* dev)
+pocl_ttasim_init_device_infos(unsigned j, struct _cl_device_id* dev)
 {
   dev->type = CL_DEVICE_TYPE_GPU;
   dev->max_compute_units = 1;
@@ -138,6 +138,7 @@ pocl_ttasim_init_device_infos(struct _cl_device_id* dev)
   dev->available = CL_TRUE;
   dev->compiler_available = CL_TRUE;
   dev->spmd = CL_FALSE;
+  dev->workgroup_pass = CL_TRUE;
   dev->execution_capabilities = CL_EXEC_KERNEL;
   dev->queue_properties = CL_QUEUE_PROFILING_ENABLE;
   dev->vendor = "TTA-Based Co-design Environment";
@@ -529,14 +530,15 @@ private:
 };
 
 
-void
-pocl_ttasim_init (cl_device_id device, const char* parameters)
+cl_int
+pocl_ttasim_init (unsigned j, cl_device_id device, const char* parameters)
 {
   if (parameters == NULL)
     POCL_ABORT("The tta device requires the adf file as a device parameter.\n"
                "Set it with POCL_TTASIMn_PARAMETERS=\"path/to/themachine.adf\".\n");
-  
-  new TTASimDevice(device, parameters); 
+
+  new TTASimDevice(device, parameters);
+  return CL_SUCCESS;
 }
 
 void

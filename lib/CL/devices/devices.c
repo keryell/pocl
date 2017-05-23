@@ -47,6 +47,10 @@
 
 #include "hsa/pocl-hsa.h"
 
+#if defined(BUILD_CUDA)
+#include "cuda/pocl-cuda.h"
+#endif
+
 #define MAX_DEV_NAME_LEN 64
 
 /* the enabled devices */
@@ -66,6 +70,9 @@ static init_device_ops pocl_devices_init_ops[] = {
 #endif
 #if defined(BUILD_HSA)
   pocl_hsa_init_device_ops,
+#endif
+#if defined(BUILD_CUDA)
+  pocl_cuda_init_device_ops,
 #endif
 };
 
@@ -180,7 +187,7 @@ pocl_string_to_dirname(char *str)
     }
 }
 
-void 
+cl_int
 pocl_init_devices()
 {
   static unsigned int init_done = 0;
@@ -199,7 +206,7 @@ pocl_init_devices()
      infinite loop. */
 
   if (init_in_progress)
-      return;
+      return CL_SUCCESS; /* debatable, but what else can we do ? */
   init_in_progress = 1;
 
   if (init_done == 0)
@@ -208,13 +215,14 @@ pocl_init_devices()
   if (init_done) 
     {
       POCL_UNLOCK(pocl_init_lock);
-      return;
+      return pocl_num_devices ? CL_SUCCESS : CL_DEVICE_NOT_FOUND;
     }
 
   /* Set a global debug flag, so we don't have to call pocl_get_bool_option
    * everytime we use the debug macros */
 #ifdef POCL_DEBUG_MESSAGES
-  pocl_debug_messages = pocl_get_bool_option("POCL_DEBUG", 0);
+  const char* debug = pocl_get_string_option ("POCL_DEBUG", "0");
+  pocl_debug_messages_setup (debug);
   stderr_is_a_tty = isatty(fileno(stderr));
 #endif
 
@@ -230,16 +238,26 @@ pocl_init_devices()
       pocl_devices_init_ops[i](&pocl_device_ops[i]);
       assert(pocl_device_ops[i].device_name != NULL);
 
-      /* Probe and add the result to the number of probbed devices */
+      /* Probe and add the result to the number of probed devices */
       assert(pocl_device_ops[i].probe);
       device_count[i] = pocl_device_ops[i].probe(&pocl_device_ops[i]);
       pocl_num_devices += device_count[i];
     }
 
-  assert(pocl_num_devices > 0);
+  if (pocl_num_devices == 0)
+    {
+      const char *dev_env = getenv (POCL_DEVICES_ENV);
+      if (dev_env)
+        POCL_MSG_WARN ("no devices found. %s=%s\n", POCL_DEVICES_ENV, dev_env);
+      return CL_DEVICE_NOT_FOUND;
+    }
+
   pocl_devices = (struct _cl_device_id*) calloc(pocl_num_devices, sizeof(struct _cl_device_id));
   if (pocl_devices == NULL)
-    POCL_ABORT("Can not allocate memory for devices\n");
+    {
+      POCL_MSG_ERR ("Can not allocate memory for devices\n");
+      return CL_OUT_OF_HOST_MEMORY;
+    }
 
   dev_index = 0;
   /* Init infos for each probed devices */
@@ -248,6 +266,7 @@ pocl_init_devices()
       assert(pocl_device_ops[i].init);
       for (j = 0; j < device_count[i]; ++j)
         {
+          cl_int ret = CL_SUCCESS;
           pocl_devices[dev_index].ops = &pocl_device_ops[i];
           pocl_devices[dev_index].dev_id = dev_index;
           /* The default value for the global memory space identifier is
@@ -255,8 +274,8 @@ pocl_init_devices()
              it to point to some other device's global memory id in case of
              a shared global memory. */
           pocl_devices[dev_index].global_mem_id = dev_index;
-          
-          pocl_device_ops[i].init_device_infos(&pocl_devices[dev_index]);
+
+          pocl_device_ops[i].init_device_infos(j, &pocl_devices[dev_index]);
 
           pocl_device_common_init(&pocl_devices[dev_index]);
 
@@ -264,22 +283,34 @@ pocl_init_devices()
           /* Check if there are device-specific parameters set in the
              POCL_DEVICEn_PARAMETERS env. */
           if (snprintf (env_name, 1024, "POCL_%s%d_PARAMETERS", dev_name, j) < 0)
-            POCL_ABORT("Unable to generate the env string.");
-          pocl_devices[dev_index].dev_id = dev_index;
-          pocl_devices[dev_index].ops->init(&pocl_devices[dev_index], getenv(env_name));
+            {
+              POCL_MSG_ERR("Unable to generate the env string.");
+              return CL_OUT_OF_HOST_MEMORY;
+            }
+          ret = pocl_devices[dev_index].ops->init (j, &pocl_devices[dev_index], getenv(env_name));
+          switch (ret)
+          {
+          case CL_OUT_OF_HOST_MEMORY:
+            return ret;
+          case CL_SUCCESS:
+            break;
+          default:
+            pocl_devices[dev_index].available = 0;
+          }
 
           if (dev_index == 0)
             pocl_devices[dev_index].type |= CL_DEVICE_TYPE_DEFAULT;
 
           pocl_devices[dev_index].cache_dir_name = strdup(pocl_devices[dev_index].long_name);
           pocl_string_to_dirname(pocl_devices[dev_index].cache_dir_name);
-          
+
           ++dev_index;
         }
     }
 
   init_done = 1;
   POCL_UNLOCK(pocl_init_lock);
+  return CL_SUCCESS;
 }
 
 int pocl_get_unique_global_mem_id ()

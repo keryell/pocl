@@ -141,25 +141,16 @@ program_compile_dynamic_wg_binaries(cl_program program)
               local_y = kernel->reqd_wg_size[1];
               local_z = kernel->reqd_wg_size[2];
             }
-
+          cmd.command.run.local_x = local_x;
+          cmd.command.run.local_y = local_y;
+          cmd.command.run.local_z = local_z;
+          cmd.command.run.kernel = kernel;
           pocl_cache_kernel_cachedir_path (cachedir, program, device_i, kernel,
                                            "", local_x, local_y, local_z);
-
-          errcode = pocl_llvm_generate_workgroup_function (cachedir, device, kernel,
-                                                           local_x, local_y, local_z);
-          if (errcode != CL_SUCCESS)
-            {
-              POCL_MSG_ERR("Failed to generate workgroup function for "
-                           "kernel %s for device %s\n",
-                           program->kernel_names[i], device->short_name);
-              goto RET;
-            }
-          cmd.command.run.kernel = kernel;
           device->ops->compile_kernel (&cmd, kernel, device);
         }
     }
 
-RET:
   POCL_UNLOCK_OBJ(program);
   return errcode;
 }
@@ -221,7 +212,6 @@ CL_API_SUFFIX__VERSION_1_0
 
   program->main_build_log[0] = 0;
 
-  size_t size = 512;
   size_t i = 1; /* terminating char */
   modded_options = (char*) calloc (512, 1);
 
@@ -517,7 +507,7 @@ CL_API_SUFFIX__VERSION_1_0
   /* Set up all program kernels.  */
   /* TODO: Should not have to unlock program while adding default kernels.  */
   assert (program->default_kernels == NULL);
-  program->kernels = ADDING_DEFAULT_KERNELS_TO_CL_PROGRAM;
+  program->operating_on_default_kernels = 1;
   program->default_kernels = calloc(program->num_kernels, sizeof(cl_kernel));
 
   for (i=0; i < program->num_kernels; i++)
@@ -531,7 +521,7 @@ CL_API_SUFFIX__VERSION_1_0
                          "Failed to create default kernels\n");
     }
 
-  program->kernels = 0;
+  program->operating_on_default_kernels = 0;
 
   return CL_SUCCESS;
 

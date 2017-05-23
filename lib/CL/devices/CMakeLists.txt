@@ -49,7 +49,12 @@ if(ENABLE_HSA)
   list(APPEND POCL_DEVICES_LINK_LIST ${HSALIB})
 endif()
 
-set(POCL_DEVICES_SOURCES 
+if(ENABLE_CUDA)
+  add_subdirectory("cuda")
+  list(APPEND POCL_DEVICES_LINK_LIST cuda)
+endif()
+
+set(POCL_DEVICES_SOURCES
   devices.h  devices.c
   bufalloc.c  dev_image.h
   common.h common.c

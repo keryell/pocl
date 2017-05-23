@@ -44,6 +44,7 @@ POname(clEnqueueWriteBufferRect)(cl_command_queue command_queue,
   cl_device_id device;
   unsigned i;
   _cl_command_node *cmd;
+  cl_int errcode;
 
   POCL_RETURN_ERROR_COND((command_queue == NULL), CL_INVALID_COMMAND_QUEUE);
 
@@ -59,11 +60,10 @@ POname(clEnqueueWriteBufferRect)(cl_command_queue command_queue,
   POCL_RETURN_ERROR_ON((command_queue->context != buffer->context),
     CL_INVALID_CONTEXT, "buffer and command_queue are not from the same context\n");
 
-  POCL_RETURN_ERROR_COND((event_wait_list == NULL && num_events_in_wait_list > 0),
-    CL_INVALID_EVENT_WAIT_LIST);
-
-  POCL_RETURN_ERROR_COND((event_wait_list != NULL && num_events_in_wait_list == 0),
-    CL_INVALID_EVENT_WAIT_LIST);
+  errcode = pocl_check_event_wait_list (command_queue, num_events_in_wait_list,
+                                        event_wait_list);
+  if (errcode != CL_SUCCESS)
+    return errcode;
 
   POCL_RETURN_ERROR_COND((ptr == NULL), CL_INVALID_VALUE);
   POCL_RETURN_ERROR_COND((buffer_origin == NULL), CL_INVALID_VALUE);
@@ -79,17 +79,7 @@ POname(clEnqueueWriteBufferRect)(cl_command_queue command_queue,
   if (pocl_buffer_boundcheck_3d(((size_t)-1), host_origin, region, &host_row_pitch,
       &host_slice_pitch, "") != CL_SUCCESS) return CL_INVALID_VALUE;
 
-
-
-
-  device = POCL_REAL_DEV(command_queue->device);
-
-  for (i = 0; i < command_queue->context->num_devices; ++i)
-    {
-      if (command_queue->context->devices[i] == device)
-        break;
-    }
-  assert(i < command_queue->context->num_devices);
+  POCL_CHECK_DEV_IN_CMDQ;
 
   POname(clRetainMemObject) (buffer);
 

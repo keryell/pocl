@@ -160,7 +160,11 @@ load_source(FrontendOptions &fe,
                        CL_OUT_OF_HOST_MEMORY, "Could not write program source");
 
   fe.Inputs.push_back
-    (FrontendInputFile(source_file, clang::IK_OpenCL));
+#if LLVM_OLDER_THAN_5_0
+      (FrontendInputFile(source_file, clang::IK_OpenCL));
+#else
+      (FrontendInputFile(source_file, clang::InputKind::OpenCL));
+#endif
 
   return 0;
 }
@@ -288,7 +292,8 @@ int pocl_llvm_build_program(cl_program program,
 #endif
     }
   }
-
+  if (device->has_64bit_long)
+    ss << "-Dcl_khr_int64 ";
   // This can cause illegal optimizations when unaware
   // of the barrier semantics. -O2 is the default opt level in
   // Clang for OpenCL C and seems to affect the performance
@@ -390,7 +395,12 @@ int pocl_llvm_build_program(cl_program program,
 #else
   llvm::Triple triple(device->llvm_target_triplet);
   pocl_build.setLangDefaults
-    (*la, clang::IK_OpenCL, triple, po, clang::LangStandard::lang_opencl12);
+#if LLVM_OLDER_THAN_5_0
+      (*la, clang::IK_OpenCL, triple, po, clang::LangStandard::lang_opencl12);
+#else
+      (*la, clang::InputKind::OpenCL, triple, po,
+       clang::LangStandard::lang_opencl12);
+#endif
 #endif
 
   // LLVM 3.3 and older do not set that char is signed which is
@@ -470,9 +480,10 @@ int pocl_llvm_build_program(cl_program program,
 
   if (success) {
     pocl_read_file(tempfile, &PreprocessedOut, &PreprocessedSize);
-    pocl_remove(tempfile);
     fe.OutputFile = saved_output;
   }
+  if (pocl_get_bool_option("POCL_LEAVE_KERNEL_COMPILER_TEMP_FILES", 0) == 0)
+    pocl_remove(tempfile);
 
   if (PreprocessedOut == nullptr) {
     pocl_cache_create_program_cachedir(program, device_i, NULL, 0,
@@ -516,10 +527,11 @@ int pocl_llvm_build_program(cl_program program,
   write_lock = pocl_cache_acquire_writer_lock_i(program, device_i);
   assert(write_lock);
 
-  /* Always retain program.bc. Its required in clBuildProgram */
-  pocl_write_module(*mod, program_bc_path, 0);
+  POCL_MSG_PRINT_INFO("Writing program.bc to %s.\n", program_bc_path);
 
-  POCL_MSG_PRINT_INFO("Wrote program.bc to %s.\n", program_bc_path);
+  /* Always retain program.bc. Its required in clBuildProgram */
+  int error = pocl_write_module(*mod, program_bc_path, 0);
+  assert(error == 0);
 
   /* To avoid writing & reading the same back,
    * save program->binaries[i]
@@ -935,7 +947,7 @@ int pocl_llvm_get_kernel_metadata(cl_program program,
     *errcode = CL_INVALID_KERNEL_NAME;
     return 1;
   }
-  kernel->num_args = KernelFunction->getArgumentList().size();
+  kernel->num_args = KernelFunction->arg_size();
 
 #if defined(LLVM_OLDER_THAN_3_9)
   if (pocl_get_kernel_arg_module_metadata(kernel_name, input, kernel)) {
@@ -971,7 +983,7 @@ int pocl_llvm_get_kernel_metadata(cl_program program,
        i != e; ++i) {
     std::string funcName = "";
     funcName = KernelFunction->getName().str();
-    if (pocl::is_automatic_local(funcName, *i)) {
+    if (pocl::isAutomaticLocal(funcName, *i)) {
       POCL_MSG_PRINT_INFO("Automatic local detected: %s\n",
                           i->getName().str().c_str());
       locals.push_back(&*i);
@@ -1003,13 +1015,10 @@ int pocl_llvm_get_kernel_metadata(cl_program program,
 #endif
     }
 
-  const llvm::Function::ArgumentListType &ArgList =
-    KernelFunction->getArgumentList();
-
   i = 0;
-  for (llvm::Function::const_arg_iterator ii = ArgList.begin(),
-                                          ee = ArgList.end();
-       ii != ee ; ii++) {
+  for (llvm::Function::const_arg_iterator ii = KernelFunction->arg_begin(),
+                                          ee = KernelFunction->arg_end();
+       ii != ee; ii++) {
     llvm::Type *t = ii->getType();
     struct pocl_argument_info &ArgInfo = kernel->arg_info[i];
     ArgInfo.type = POCL_ARG_TYPE_NONE;
@@ -1043,16 +1052,16 @@ int pocl_llvm_get_kernel_metadata(cl_program program,
     }
 
     if (pocl::is_image_type(*t)) {
-      kernel->arg_info[i].type = POCL_ARG_TYPE_IMAGE;
+      ArgInfo.type = POCL_ARG_TYPE_IMAGE;
     } else if (pocl::is_sampler_type(*t)) {
-      kernel->arg_info[i].type = POCL_ARG_TYPE_SAMPLER;
+      ArgInfo.type = POCL_ARG_TYPE_SAMPLER;
     }
     i++;
   }
   // fill 'kernel->reqd_wg_size'
-  kernel->reqd_wg_size = (int*)malloc(3*sizeof(int));
+  kernel->reqd_wg_size = (size_t *)malloc(3 * sizeof(size_t));
 
-  unsigned reqdx = 0, reqdy = 0, reqdz = 0;
+  size_t reqdx = 0, reqdy = 0, reqdz = 0;
 
 #ifdef LLVM_OLDER_THAN_3_9
   llvm::NamedMDNode *size_info =
@@ -1390,11 +1399,11 @@ static PassManager& kernel_compiler_passes
      context restore them with non-PHI code if the value is needed in another PHI). */
 
   std::vector<std::string> passes;
+  passes.push_back("remove-optnone");
   passes.push_back("handle-samplers");
   passes.push_back("workitem-handler-chooser");
   passes.push_back("mem2reg");
   passes.push_back("domtree");
-  passes.push_back("break-constgeps");
   if (device->autolocals_to_args)
 	  passes.push_back("automatic-locals");
   passes.push_back("flatten");
@@ -1422,7 +1431,8 @@ static PassManager& kernel_compiler_passes
   }
   // Add the work group launcher functions and privatize the pseudo variable
   // (local id) accesses.
-  passes.push_back("workgroup");
+  if (device->workgroup_pass)
+    passes.push_back("workgroup");
 
   // Attempt to move all allocas to the entry block to avoid the need for
   // dynamic stack which is problematic for some architectures.
@@ -1597,6 +1607,13 @@ kernel_library
     is_host = false;
   }
 #endif
+#ifdef BUILD_CUDA
+  if (triple.getArch() == Triple::nvptx ||
+      triple.getArch() == Triple::nvptx64) {
+    subdir = "cuda";
+    is_host = false;
+  }
+#endif
 
   // TODO sync with Nat Ferrus' indexed linking
   std::string kernellib;
@@ -1609,38 +1626,34 @@ kernel_library
     kernellib += "/kernel-";
     kernellib += device->llvm_target_triplet;
     if (is_host) {
-#ifdef POCL_BUILT_WITH_CMAKE
-    kernellib += '-';
-    kernellib_fallback = kernellib;
-    kernellib_fallback += OCL_KERNEL_TARGET_CPU;
-    kernellib_fallback += ".bc";
+      kernellib += '-';
+      kernellib_fallback = kernellib;
+      kernellib_fallback += OCL_KERNEL_TARGET_CPU;
+      kernellib_fallback += ".bc";
 #ifdef KERNELLIB_HOST_DISTRO_VARIANTS
-    if (triple.getArch() == Triple::x86_64 ||
-        triple.getArch() == Triple::x86)
-      kernellib += getX86KernelLibName();
-    else
+      if (triple.getArch() == Triple::x86_64 ||
+          triple.getArch() == Triple::x86)
+        kernellib += getX86KernelLibName();
+      else
 #endif
-      kernellib += device->llvm_cpu;
-#endif
+        kernellib += device->llvm_cpu;
     }
   } else { // POCL_BUILDING == 0, use install dir
     kernellib = PKGDATADIR;
     kernellib += "/kernel-";
     kernellib += device->llvm_target_triplet;
     if (is_host) {
-#ifdef POCL_BUILT_WITH_CMAKE
-    kernellib += '-';
-    kernellib_fallback = kernellib;
-    kernellib_fallback += OCL_KERNEL_TARGET_CPU;
-    kernellib_fallback += ".bc";
+      kernellib += '-';
+      kernellib_fallback = kernellib;
+      kernellib_fallback += OCL_KERNEL_TARGET_CPU;
+      kernellib_fallback += ".bc";
 #ifdef KERNELLIB_HOST_DISTRO_VARIANTS
-    if (triple.getArch() == Triple::x86_64 ||
-        triple.getArch() == Triple::x86)
-      kernellib += getX86KernelLibName();
-    else
+      if (triple.getArch() == Triple::x86_64 ||
+          triple.getArch() == Triple::x86)
+        kernellib += getX86KernelLibName();
+      else
 #endif
-      kernellib += device->llvm_cpu;
-#endif
+        kernellib += device->llvm_cpu;
     }
   }
   kernellib += ".bc";
@@ -1673,7 +1686,7 @@ kernel_library
 /* This is used to control the kernel we want to process in the kernel compilation. */
 extern cl::opt<std::string> KernelName;
 
-int pocl_llvm_generate_workgroup_function(char* kernel_cachedir, cl_device_id device,
+int pocl_llvm_generate_workgroup_function(cl_device_id device,
                                           cl_kernel kernel, size_t local_x,
                                           size_t local_y, size_t local_z) {
 
@@ -1696,8 +1709,6 @@ int pocl_llvm_generate_workgroup_function(char* kernel_cachedir, cl_device_id de
 
   if (pocl_exists(final_binary_path))
     return CL_SUCCESS;
-
-  pocl_mkdir_p(kernel_cachedir);
 
   llvm::MutexGuard lockHolder(kernelCompilerLock);
   InitializeLLVM();
@@ -1776,9 +1787,11 @@ int pocl_llvm_generate_workgroup_function(char* kernel_cachedir, cl_device_id de
       input->getDataLayout().getStringRepresentation())
       .run(*input);
 #endif
+
   // TODO: don't write this once LLC is called via API, not system()
-  pocl_cache_write_kernel_parallel_bc(input, program, device_i, kernel,
-                                  local_x, local_y, local_z);
+  int error = pocl_cache_write_kernel_parallel_bc(input, program, device_i,
+                                  kernel, local_x, local_y, local_z);
+  assert(error == 0);
 
   delete input;
   return 0;
@@ -1817,6 +1830,7 @@ void pocl_llvm_update_binaries (cl_program program) {
   InitializeLLVM();
   char program_bc_path[POCL_FILENAME_LENGTH];
   void* cache_lock = NULL;
+  int error;
 
   // Dump the LLVM IR Modules to memory buffers. 
   assert (program->llvm_irs != NULL);
@@ -1831,9 +1845,12 @@ void pocl_llvm_update_binaries (cl_program program) {
           continue;
 
       cache_lock = pocl_cache_acquire_writer_lock_i(program, i);
+      assert(cache_lock);
 
       pocl_cache_program_bc_path(program_bc_path, program, i);
-      pocl_write_module((llvm::Module*)program->llvm_irs[i], program_bc_path, 1);
+      error = pocl_write_module((llvm::Module*)program->llvm_irs[i],
+                                 program_bc_path, 1);
+      assert(error == 0);
 
       std::string content;
       llvm::raw_string_ostream sos(content);
@@ -1849,6 +1866,8 @@ void pocl_llvm_update_binaries (cl_program program) {
       std::memcpy(program->binaries[i], content.c_str(), n);
 
       pocl_cache_release_lock(cache_lock);
+      cache_lock = NULL;
+
 #ifdef DEBUG_POCL_LLVM_API        
       printf("### binary for device %zi was of size %zu\n", i, program->binary_sizes[i]);
 #endif

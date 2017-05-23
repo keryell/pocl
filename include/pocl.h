@@ -38,6 +38,9 @@
 #include "pocl_device.h"
 #include "config.h"
 
+/* detects restrict, variadic macros etc */
+#include "pocl_compiler_features.h"
+
 #define POCL_FILENAME_LENGTH 1024
 
 typedef struct _mem_mapping mem_mapping_t;
@@ -74,10 +77,6 @@ typedef struct
   char *tmp_dir; 
   pocl_workgroup wg;
   cl_kernel kernel;
-  /* A list of argument buffers to free after the command has 
-     been executed. */
-  cl_mem *arg_buffers;
-  unsigned arg_buffer_count;
   size_t local_x;
   size_t local_y;
   size_t local_z;
@@ -171,8 +170,10 @@ typedef struct
 
 typedef struct
 {
-  void *dst_ptr;
-  const void *src_ptr;
+  cl_device_id dst_device;
+  cl_mem dst_buffer;
+  cl_device_id src_device;
+  cl_mem src_buffer;
   size_t dst_origin[3];
   size_t src_origin[3];
   size_t region[3];
@@ -308,21 +309,31 @@ struct _cl_command_node
 # define LLVM_OLDER_THAN_3_8 1
 # define LLVM_OLDER_THAN_3_9 1
 # define LLVM_OLDER_THAN_4_0 1
+# define LLVM_OLDER_THAN_5_0 1
 #endif
 
 #if (defined LLVM_3_7)
 # define LLVM_OLDER_THAN_3_8 1
 # define LLVM_OLDER_THAN_3_9 1
 # define LLVM_OLDER_THAN_4_0 1
+# define LLVM_OLDER_THAN_5_0 1
 #endif
 
 #if (defined LLVM_3_8)
 # define LLVM_OLDER_THAN_3_9 1
 # define LLVM_OLDER_THAN_4_0 1
+# define LLVM_OLDER_THAN_5_0 1
 #endif
 
 #if (defined LLVM_3_9)
 # define LLVM_OLDER_THAN_4_0 1
+# define LLVM_OLDER_THAN_5_0 1
+# define LLVM_OLDER_THAN_5_0 1
 #endif
+
+#if (defined LLVM_4_0)
+# define LLVM_OLDER_THAN_5_0 1
+#endif
+
 
 #endif /* POCL_H */

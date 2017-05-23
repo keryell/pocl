@@ -45,10 +45,12 @@ POname(clReleaseProgram)(cl_program program) CL_API_SUFFIX__VERSION_1_0
   POCL_RETURN_ERROR_COND((program == NULL), CL_INVALID_PROGRAM);
 
   POCL_RELEASE_OBJECT (program, new_refcount);
+  POCL_MSG_PRINT_REFCOUNTS ("Release program %p, new refcount: %d, kernel #: %zu \n", program, new_refcount, program->num_kernels);
 
   if (new_refcount == 0)
     {
       cl_context context = program->context;
+      POCL_MSG_PRINT_REFCOUNTS ("Free program %p\n", program);
 
       /* Mark all kernels as having no program.
          FIXME: this should not be needed if the kernels
@@ -80,9 +82,10 @@ POname(clReleaseProgram)(cl_program program) CL_API_SUFFIX__VERSION_1_0
           POCL_MEM_FREE(program->build_log[i]);
       POCL_MEM_FREE(program->build_log);
 
+      program->operating_on_default_kernels = 1;
       if (program->num_kernels)
         {
-          for (i=0; i < program->num_kernels; i++)
+          for (i = 0; i < program->num_kernels; i++)
             {
               if (program->kernel_names)
                 POCL_MEM_FREE(program->kernel_names[i]);

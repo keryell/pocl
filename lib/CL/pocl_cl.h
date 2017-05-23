@@ -211,7 +211,7 @@ typedef struct pocl_argument_info {
 struct pocl_device_ops {
   const char *device_name;
   void *shared_data; /* data to be shared by a devices of same type */
-  void (*init_device_infos) (struct _cl_device_id*);
+  void (*init_device_infos) (unsigned j, struct _cl_device_id*);
   /* implementation */
 
   /* New driver api extension for out-of-order execution and
@@ -263,7 +263,12 @@ struct pocl_device_ops {
 
   void (*uninit) (cl_device_id device);
   unsigned int (*probe) (struct pocl_device_ops *ops);
-  void (*init) (cl_device_id device, const char *parameters);
+  /* Device initialization. Parameters:
+   *  j : progressive index for the devices of the same type
+   *  device : struct to initialize
+   *  parameters : optional environment with device-specific parameters
+   */
+  cl_int (*init) (unsigned j, cl_device_id device, const char *parameters);
   cl_int (*alloc_mem_obj) (cl_device_id device, cl_mem mem_obj, void* host_ptr);
   void *(*create_sub_buffer) (void *data, void* buffer, size_t origin, size_t size);
   void (*free) (cl_device_id device, cl_mem mem_obj);
@@ -413,6 +418,11 @@ struct _cl_device_id {
      we need to generate work-item loops to execute all the work-items
      in the WG, otherwise the hardware spawns the WIs. */
   cl_bool spmd;
+  /* The Workgroup pass creates launcher functions and replaces work-item
+     placeholder global variables (e.g. _local_size_, _global_offset_ etc) with
+     loads from the context struct passed as a kernel argument. This flag
+     enables or disables this pass. */
+  cl_bool workgroup_pass;
   cl_device_exec_capabilities execution_capabilities;
   cl_command_queue_properties queue_properties;
   cl_platform_id platform;
@@ -607,15 +617,16 @@ struct _cl_mem {
 
 typedef uint8_t SHA1_digest_t[SHA1_DIGEST_SIZE * 2 + 1];
 
-/* Any value except zero, just have to be an invalid pointer. */
-#define ADDING_DEFAULT_KERNELS_TO_CL_PROGRAM (void*)11
-
 struct _cl_program {
   POCL_ICD_OBJECT
   POCL_OBJECT;
   /* queries */
   cl_context context;
   cl_uint num_devices;
+  /* bool flag, set to 1 when removing/adding default kernels to a program
+   * This code needs to be eventually fixed by introducing kernel_metadata
+   * struct, see Issue #390 */
+  int operating_on_default_kernels;
   cl_device_id *devices;
   /* all the program sources appended together, terminated with a zero */
   char *source;
@@ -666,11 +677,14 @@ struct _cl_kernel {
   struct pocl_argument_info *arg_info;
   cl_bitfield has_arg_metadata;
   cl_uint num_locals;
-  int *reqd_wg_size;
+  size_t *reqd_wg_size;
   /* The kernel arguments that are set with clSetKernelArg().
      These are copied to the command queue command at enqueue. */
   struct pocl_argument *dyn_arguments;
   struct _cl_kernel *next;
+
+  /* backend specific data */
+  void *data;
 };
 
 typedef struct event_callback_item event_callback_item;
@@ -731,6 +745,8 @@ struct _cl_event {
 typedef struct _cl_sampler cl_sampler_t;
 struct _cl_sampler {
   POCL_ICD_OBJECT
+  POCL_OBJECT;
+  cl_context context;
   cl_bool             normalized_coords;
   cl_addressing_mode  addressing_mode;
   cl_filter_mode      filter_mode;

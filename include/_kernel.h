@@ -55,6 +55,12 @@
 /* must come after _enable_all_exts.h b/c of pocl_types.h*/
 #include "_kernel_c.h"
 
+/* required to be defined by the OpenCL standard, see:
+   https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/preprocessorDirectives.html */
+#define __kernel_exec(X, typen)                                               \
+  __kernel __attribute__ ((work_group_size_hint (X, 1, 1)))                   \
+      __attribute__ ((vec_type_hint (typen)))
+
 /* Enable double precision. This should really only be done when
    building the run-time library; when building application code, we
    should instead check a macro to see whether the application has
@@ -101,8 +107,6 @@
 #else
 #  define _CL_STATIC_ASSERT(_t, _x) typedef int __cl_ai##_t[(x) ? 1 : -1];
 #endif
-
-typedef uint cl_mem_fence_flags;
 
 /* Ensure the data types have the right sizes */
 _CL_STATIC_ASSERT(char  , sizeof(char  ) == 1);
@@ -440,13 +444,18 @@ size_t _CL_OVERLOADABLE get_num_groups(uint);
 size_t _CL_OVERLOADABLE get_group_id(uint);
 size_t _CL_OVERLOADABLE get_global_offset(uint);
 
+#if (__OPENCL_C_VERSION__ < 121)
+void read_mem_fence (cl_mem_fence_flags flags);
+void write_mem_fence (cl_mem_fence_flags flags);
+void mem_fence (cl_mem_fence_flags flags);
+#endif
+
 #if __has_attribute(__noduplicate__)
 void _CL_OVERLOADABLE __attribute__ ((__noduplicate__))
 barrier (cl_mem_fence_flags flags);
 #else
 void _CL_OVERLOADABLE barrier (cl_mem_fence_flags flags);
 #endif
-
 
 /* Math Constants */
 
@@ -513,6 +522,7 @@ void _CL_OVERLOADABLE barrier (cl_mem_fence_flags flags);
 #define FLT_MAX        0x1.fffffep127f
 #define FLT_MIN        0x1.0p-126f
 #define FLT_EPSILON    0x1.0p-23f
+#define FLT_RADIX 2
 
 #define FP_ILOGB0   INT_MIN
 #define FP_ILOGBNAN INT_MIN
@@ -545,6 +555,7 @@ void _CL_OVERLOADABLE barrier (cl_mem_fence_flags flags);
 #define DBL_MAX        0x1.fffffffffffffp1023
 #define DBL_MIN        0x1.0p-1022
 #define DBL_EPSILON    0x1.0p-52
+#define DBL_RADIX 2
 
 #define M_E        2.71828182845904523536028747135
 #define M_LOG2E    1.44269504088896340735992468100
@@ -2303,6 +2314,10 @@ _CL_DECLARE_SHUFFLE_MN(double, ulong ))
 int __cl_printf(constant char* restrict format, ...);
 #define printf __cl_printf
 
+void wait_group_events (int num_events, event_t *event_list);
+
+/***************************************************************************/
+
 /* Async Copies from Global to Local Memory, Local to
    Global Memory, and Prefetch */
 
@@ -2319,9 +2334,6 @@ int __cl_printf(constant char* restrict format, ...);
                                  size_t num_gentypes,           \
                                  event_t event);                \
                                                                 
-void wait_group_events (int num_events,                      
-                        event_t *event_list);                 
-
 #define _CL_DECLARE_ASYNC_COPY_FUNCS(GENTYPE)      \
   _CL_DECLARE_ASYNC_COPY_FUNCS_SINGLE(GENTYPE)     \
   _CL_DECLARE_ASYNC_COPY_FUNCS_SINGLE(GENTYPE##2)   \
@@ -2339,10 +2351,45 @@ _CL_DECLARE_ASYNC_COPY_FUNCS(uint);
 __IF_INT64(_CL_DECLARE_ASYNC_COPY_FUNCS(long));
 __IF_INT64(_CL_DECLARE_ASYNC_COPY_FUNCS(ulong));
 
-__IF_FP16(_CL_DECLARE_ASYNC_COPY_FUNCS_SINGLE(half));
+__IF_FP16 (_CL_DECLARE_ASYNC_COPY_FUNCS (half));
 _CL_DECLARE_ASYNC_COPY_FUNCS(float);
 __IF_FP64(_CL_DECLARE_ASYNC_COPY_FUNCS(double));
 
+/***************************************************************************/
+
+#define _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE(GENTYPE)                  \
+  _CL_OVERLOADABLE                                                            \
+  event_t async_work_group_strided_copy (                                     \
+      __local GENTYPE *dst, const __global GENTYPE *src, size_t num_gentypes, \
+      size_t src_stride, event_t event);                                      \
+                                                                              \
+  _CL_OVERLOADABLE                                                            \
+  event_t async_work_group_strided_copy (                                     \
+      __global GENTYPE *dst, const __local GENTYPE *src, size_t num_gentypes, \
+      size_t dst_stride, event_t event);
+
+#define _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS(GENTYPE)                         \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE)                       \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE##2)                    \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE##3)                    \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE##4)                    \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE##8)                    \
+  _CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS_SINGLE (GENTYPE##16)
+
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (char);
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (uchar);
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (short);
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (ushort);
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (int);
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (uint);
+__IF_INT64 (_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (long));
+__IF_INT64 (_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (ulong));
+
+__IF_FP16 (_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (half));
+_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (float);
+__IF_FP64 (_CL_DECLARE_ASYNC_STRIDED_COPY_FUNCS (double));
+
+/***************************************************************************/
 
 #define _CL_DECLARE_PREFETCH_FUNCS_SINGLE(GENTYPE) \
   _CL_OVERLOADABLE \
@@ -2368,110 +2415,280 @@ __IF_FP16(_CL_DECLARE_PREFETCH_FUNCS(half));
 _CL_DECLARE_PREFETCH_FUNCS(float);
 __IF_FP64(_CL_DECLARE_PREFETCH_FUNCS(double));
 
-/* read_imagef 2d functions*/
-float4 _CL_OVERLOADABLE read_imagef (image2d_t image, sampler_t sampler,
-                                     int2 coord);
-/* float coords not implemented yet
-float4 _CL_OVERLOADABLE read_imagef (image2d_t image, sampler_t sampler,
-                                     float2 coord);
-*/
 
-float4 _CL_OVERLOADABLE read_imagef (image2d_t image, int2 coord);
+/* 3.9 needs access qualifier */
+#if ((__clang_major__ < 4) && (__clang_minor__ < 9))
 
-float4 _CL_OVERLOADABLE read_imagef (image2d_array_t image, int4 coord);
+#undef CLANG_HAS_IMAGE_AS
+#define IMG_WO_AQ
+#define IMG_RO_AQ
+#define IMG_RW_AQ
 
-float4 _CL_OVERLOADABLE read_imagef (image2d_array_t image, sampler_t sampler,
+#else
+
+#define CLANG_HAS_IMAGE_AS
+#define IMG_RO_AQ __read_only
+#define IMG_WO_AQ __write_only
+
+#if (__OPENCL_C_VERSION__ > 199)
+#define CLANG_HAS_RW_IMAGES
+#define IMG_RW_AQ __read_write
+#else
+#undef CLANG_HAS_RW_IMAGES
+#define IMG_RW_AQ __RW_IMAGES_UNSUPPORTED_BEFORE_CL_20
+#endif
+
+#endif
+
+/* NO sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_t image, int2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_array_t image, int4 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image3d_t image, int4 coord);
+
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_t image, int2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_t image, int2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_array_t image,
                                      int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_array_t image,
+                                   int4 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image3d_t image, int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image3d_t image, int4 coord);
 
-/*float coords not immplemented yet
-float4 _CL_OVERLOADABLE read_imagef (image2d_array_t image, sampler_t sampler,
+/* float4 img + float coords + sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_t image,
+                                     sampler_t sampler, float2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_array_t image, sampler_t sampler,
                                      float4 coord);
-*/
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image3d_t image,
+                                     sampler_t sampler, float4 coord);
 
-/* read_imagef 3d functions*/
-float4 _CL_OVERLOADABLE read_imagef (image3d_t image, sampler_t sampler,
+/* float4 img + int coords + sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_t image,
+                                     sampler_t sampler, int2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RO_AQ image2d_array_t image,
+                                     sampler_t sampler, int4 coord);
+float4 _CL_OVERLOADABLE read_imagef ( IMG_RO_AQ image3d_t image, sampler_t sampler,
                                      int4 coord);
 
-/* read_imageui 2d functions*/
-uint4 _CL_OVERLOADABLE read_imageui (image2d_t image, sampler_t sampler,
-                                     int2 coord);
+/* int4 img + float coords + sampler */
 
-uint4 _CL_OVERLOADABLE read_imageui (image2d_t image, sampler_t sampler, 
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_t image,
+                                     sampler_t sampler, float2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_t image,
+                                   sampler_t sampler, float2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_array_t image,
+                                     sampler_t sampler, float4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_array_t image,
+                                   sampler_t sampler, float4 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image3d_t image,
+                                     sampler_t sampler, float4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image3d_t image,
+                                   sampler_t sampler, float4 coord);
+
+/* int4 img + int coords + sampler */
+
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_t image,
+                                     sampler_t sampler, int2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_t image,
+                                   sampler_t sampler, int2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RO_AQ image2d_array_t image,
+                                     sampler_t sampler, int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image2d_array_t image,
+                                   sampler_t sampler, int4 coord);
+uint4 _CL_OVERLOADABLE read_imageui ( IMG_RO_AQ image3d_t image, sampler_t sampler,
+                                     int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RO_AQ image3d_t image,
+                                   sampler_t sampler, int4 coord);
+
+/****************************************************************************/
+
+#ifdef CLANG_HAS_RW_IMAGES
+
+/* NO sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_t image, int2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_array_t image, int4 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image3d_t image, int4 coord);
+
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_t image, int2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_t image, int2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_array_t image,
+                                     int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_array_t image,
+                                   int4 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image3d_t image, int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image3d_t image, int4 coord);
+
+/* float4 img + float coords + sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_t image,
+                                     sampler_t sampler, float2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_array_t image, sampler_t sampler,
+                                     float4 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image3d_t image,
+                                     sampler_t sampler, float4 coord);
+
+/* float4 img + int coords + sampler */
+
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_t image,
+                                     sampler_t sampler, int2 coord);
+float4 _CL_OVERLOADABLE read_imagef (IMG_RW_AQ image2d_array_t image,
+                                     sampler_t sampler, int4 coord);
+float4 _CL_OVERLOADABLE read_imagef ( IMG_RW_AQ image3d_t image, sampler_t sampler,
                                      int4 coord);
 
-uint4 _CL_OVERLOADABLE read_imageui (image3d_t image, sampler_t sampler, 
+/* int4 img + float coords + sampler */
+
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_t image,
+                                     sampler_t sampler, float2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_t image,
+                                   sampler_t sampler, float2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_array_t image,
+                                     sampler_t sampler, float4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_array_t image,
+                                   sampler_t sampler, float4 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image3d_t image,
+                                     sampler_t sampler, float4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image3d_t image,
+                                   sampler_t sampler, float4 coord);
+
+/* int4 img + int coords + sampler */
+
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_t image,
+                                     sampler_t sampler, int2 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_t image,
+                                   sampler_t sampler, int2 coord);
+uint4 _CL_OVERLOADABLE read_imageui (IMG_RW_AQ image2d_array_t image,
+                                     sampler_t sampler, int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image2d_array_t image,
+                                   sampler_t sampler, int4 coord);
+uint4 _CL_OVERLOADABLE read_imageui ( IMG_RW_AQ image3d_t image, sampler_t sampler,
                                      int4 coord);
+int4 _CL_OVERLOADABLE read_imagei (IMG_RW_AQ image3d_t image,
+                                   sampler_t sampler, int4 coord);
 
-int4 _CL_OVERLOADABLE read_imagei (image2d_t image, sampler_t sampler, 
-                                   int2 coord);
+#endif
 
+/******************************************************************************************/
 
-void _CL_OVERLOADABLE write_imagei (IMG_WRITE_AQ image2d_t image, int2 coord, int4 color);
-
-void _CL_OVERLOADABLE write_imageui (IMG_WRITE_AQ image2d_t image, int2 coord, uint4 color);
-
-
-
-void _CL_OVERLOADABLE write_imagef (IMG_WRITE_AQ image2d_t image, int2 coord,
+void _CL_OVERLOADABLE write_imagef (IMG_WO_AQ image2d_t image, int2 coord,
                                     float4 color);
-
-void _CL_OVERLOADABLE write_imagef (IMG_WRITE_AQ image3d_t image, int4 coord,
-                                    float4 color);
-
-/* not implemented 
-void _CL_OVERLOADABLE write_imagef (image2d_array_t image, int4 coord,
-                                    float4 color);
-
-void _CL_OVERLOADABLE write_imagei (image2d_array_t image, int4 coord,
+void _CL_OVERLOADABLE write_imagei (IMG_WO_AQ image2d_t image, int2 coord,
                                     int4 color);
-
-void _CL_OVERLOADABLE write_imageui (image2d_array_t image, int4 coord,
+void _CL_OVERLOADABLE write_imageui (IMG_WO_AQ image2d_t image, int2 coord,
                                      uint4 color);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_WO_AQ image2d_t image,
+                                               int2 coord, half4 color));
 
-void _CL_OVERLOADABLE write_imagef (image1d_t image, int coord,
+void _CL_OVERLOADABLE write_imagef (IMG_WO_AQ image2d_array_t image,
+                                    int4 coord, float4 color);
+void _CL_OVERLOADABLE write_imagei (IMG_WO_AQ image2d_array_t image,
+                                    int4 coord, int4 color);
+void _CL_OVERLOADABLE write_imageui (IMG_WO_AQ image2d_array_t image,
+                                     int4 coord, uint4 color);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_WO_AQ image2d_array_t image,
+                                               int4 coord, half4 color));
+
+#ifdef cl_khr_3d_image_writes
+void _CL_OVERLOADABLE write_imagef (IMG_WO_AQ image3d_t image, int4 coord,
                                     float4 color);
-
-void _CL_OVERLOADABLE write_imagei (image1d_t image, int coord,
+void _CL_OVERLOADABLE write_imagei (IMG_WO_AQ image3d_t image, int4 coord,
                                     int4 color);
-
-void _CL_OVERLOADABLE write_imageui (image1d_t image, int coord, 
+void _CL_OVERLOADABLE write_imageui (IMG_WO_AQ image3d_t image, int4 coord,
                                      uint4 color);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_WO_AQ image3d_t image,
+                                               int4 coord, half4 color));
+#endif
 
-void _CL_OVERLOADABLE write_imagef (image1d_buffer_t image, int coord, 
+/* UNIMPLEMENTED: 1d / 1d array */
+
+#ifdef CLANG_HAS_RW_IMAGES
+
+void _CL_OVERLOADABLE write_imagef (IMG_RW_AQ image2d_t image, int2 coord,
                                     float4 color);
-
-void _CL_OVERLOADABLE write_imagei (image1d_buffer_t image, int coord,
-                                     int4 color);
-
-void _CL_OVERLOADABLE write_imageui (image1d_buffer_t image, int coord,
-                                     uint4 color);
-
-void _CL_OVERLOADABLE write_imagef (image1d_array_t image, int2 coord,
-                                    float4 color);
-
-void _CL_OVERLOADABLE write_imagei (image1d_array_t image, int2 coord,
+void _CL_OVERLOADABLE write_imagei (IMG_RW_AQ image2d_t image, int2 coord,
                                     int4 color);
-
-void _CL_OVERLOADABLE write_imageui (image1d_array_t image, int2 coord,
+void _CL_OVERLOADABLE write_imageui (IMG_RW_AQ image2d_t image, int2 coord,
                                      uint4 color);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_RW_AQ image2d_t image,
+                                               int2 coord, half4 color));
 
-void _CL_OVERLOADABLE write_imageui (image3d_t image, int4 coord,
+void _CL_OVERLOADABLE write_imagef (IMG_RW_AQ image2d_array_t image,
+                                    int4 coord, float4 color);
+void _CL_OVERLOADABLE write_imagei (IMG_RW_AQ image2d_array_t image,
+                                    int4 coord, int4 color);
+void _CL_OVERLOADABLE write_imageui (IMG_RW_AQ image2d_array_t image,
+                                     int4 coord, uint4 color);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_RW_AQ image2d_array_t image,
+                                               int4 coord, half4 color));
+
+void _CL_OVERLOADABLE write_imagef (IMG_RW_AQ image3d_t image, int4 coord,
+                                    float4 color);
+void _CL_OVERLOADABLE write_imagei (IMG_RW_AQ image3d_t image, int4 coord,
+                                    int4 color);
+void _CL_OVERLOADABLE write_imageui (IMG_RW_AQ image3d_t image, int4 coord,
                                      uint4 color);
-*/
-int _CL_OVERLOADABLE get_image_width (image1d_t image);
-int _CL_OVERLOADABLE get_image_width (image2d_t image);
-int _CL_OVERLOADABLE get_image_width (image3d_t image);
+__IF_FP16 (void _CL_OVERLOADABLE write_imageh (IMG_RW_AQ image3d_t image,
+                                               int4 coord, half4 color));
 
-int _CL_OVERLOADABLE get_image_height (image1d_t image);
-int _CL_OVERLOADABLE get_image_height (image2d_t image);
-int _CL_OVERLOADABLE get_image_height (image3d_t image);
+#endif
 
-int _CL_OVERLOADABLE get_image_depth (image1d_t image);
-int _CL_OVERLOADABLE get_image_depth (image2d_t image);
-int _CL_OVERLOADABLE get_image_depth (image3d_t image);
 
-int2 _CL_OVERLOADABLE get_image_dim (image2d_t image);
-int2 _CL_OVERLOADABLE get_image_dim (image2d_array_t image);
-int4 _CL_OVERLOADABLE get_image_dim (image3d_t image);
+/******************************************************************************************/
+
+int _CL_OVERLOADABLE get_image_width (IMG_RO_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_width (IMG_RO_AQ image2d_t image);
+int _CL_OVERLOADABLE get_image_width (IMG_RO_AQ image3d_t image);
+
+int _CL_OVERLOADABLE get_image_height (IMG_RO_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_RO_AQ image2d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_RO_AQ image3d_t image);
+
+int _CL_OVERLOADABLE get_image_depth (IMG_RO_AQ image3d_t image);
+
+int2 _CL_OVERLOADABLE get_image_dim (IMG_RO_AQ image2d_t image);
+int2 _CL_OVERLOADABLE get_image_dim (IMG_RO_AQ image2d_array_t image);
+int4 _CL_OVERLOADABLE get_image_dim (IMG_RO_AQ image3d_t image);
+
+#ifdef CLANG_HAS_IMAGE_AS
+
+int _CL_OVERLOADABLE get_image_width (IMG_WO_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_width (IMG_WO_AQ image2d_t image);
+
+int _CL_OVERLOADABLE get_image_height (IMG_WO_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_WO_AQ image2d_t image);
+
+int2 _CL_OVERLOADABLE get_image_dim (IMG_WO_AQ image2d_t image);
+int2 _CL_OVERLOADABLE get_image_dim (IMG_WO_AQ image2d_array_t image);
+
+#ifdef cl_khr_3d_image_writes
+int _CL_OVERLOADABLE get_image_width (IMG_WO_AQ image3d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_WO_AQ image3d_t image);
+int _CL_OVERLOADABLE get_image_depth (IMG_WO_AQ image3d_t image);
+int4 _CL_OVERLOADABLE get_image_dim (IMG_WO_AQ image3d_t image);
+#endif
+
+#endif
+
+#ifdef CLANG_HAS_RW_IMAGES
+
+int _CL_OVERLOADABLE get_image_width (IMG_RW_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_width (IMG_RW_AQ image2d_t image);
+int _CL_OVERLOADABLE get_image_width (IMG_RW_AQ image3d_t image);
+
+int _CL_OVERLOADABLE get_image_height (IMG_RW_AQ image1d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_RW_AQ image2d_t image);
+int _CL_OVERLOADABLE get_image_height (IMG_RW_AQ image3d_t image);
+
+int _CL_OVERLOADABLE get_image_depth (IMG_RW_AQ image3d_t image);
+
+int2 _CL_OVERLOADABLE get_image_dim (IMG_RW_AQ image2d_t image);
+int2 _CL_OVERLOADABLE get_image_dim (IMG_RW_AQ image2d_array_t image);
+int4 _CL_OVERLOADABLE get_image_dim (IMG_RW_AQ image3d_t image);
+
+#endif
 
 #pragma OPENCL EXTENSION all : disable

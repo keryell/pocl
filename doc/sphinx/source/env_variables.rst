@@ -33,6 +33,11 @@ pocl.
  CL_INVALID_VALUE. If clock_gettime is available, messages
  will include a timestamp.
 
+ The old way (setting POCL_DEBUG to 1) has been updated to support categories.
+ Using this limits the amount of debug messages produced. Current options are:
+ general,memory,llvm,events,cache,locking,refcounts,timing,hsa,tce,all.
+ Note: setting POCL_DEBUG to 1 still works.
+
 - **POCL_DEBUG_LLVM_PASSES**
 
  When set to 1, enables debug output from LLVM passes during optimization.
@@ -175,5 +180,7 @@ pocl.
                - pocl_trace:copy_buffer    -> Copy buffer
                - pocl_trace:map            -> Map image/buffer
                - pocl_trace:command        -> other commands
-              For more informations, please see lttng documentation:
+
+              For more information, please see lttng documentation:
               http://lttng.org/docs/#doc-tracing-your-own-user-application
+

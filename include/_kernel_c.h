@@ -50,6 +50,11 @@
 # undef LLVM_4_0
 # define LLVM_4_0
 
+#elif (__clang_major__ == 5)
+
+# undef LLVM_5_0
+# define LLVM_5_0
+
 #else
 
 #error Unsupported Clang/LLVM version.
@@ -76,6 +81,10 @@
 
 #if (defined LLVM_3_9)
 # define LLVM_OLDER_THAN_4_0 1
+#endif
+
+#if (defined LLVM_4_0)
+# define LLVM_OLDER_THAN_5_0 1
 #endif
 
 #include "_kernel_constants.h"
@@ -223,14 +232,6 @@ typedef struct _pocl_image2d_array_t { dev_image_t base; }* image2d_array_t;
 typedef struct _pocl_image1d_array_t { dev_image_t base; }* image1d_array_t;
 #endif
 
-// 3.9 needs access qualifier
-// TODO: rw images
-#ifdef CLANG_OLDER_THAN_3_9
-#define IMG_WRITE_AQ
-#else
-#define IMG_WRITE_AQ __write_only
-#endif
-
 #ifdef POCL_USE_FAKE_ADDR_SPACE_IDS
 /*
  * During pocl kernel compiler transformations we use the fixed address
@@ -258,5 +259,6 @@ typedef struct _pocl_image1d_array_t { dev_image_t base; }* image1d_array_t;
 
 #endif
 
+typedef uint cl_mem_fence_flags;
 
 #endif

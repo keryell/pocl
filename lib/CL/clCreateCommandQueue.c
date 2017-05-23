@@ -35,18 +35,22 @@ POname(clCreateCommandQueue)(cl_context context,
   int errcode;
   cl_bool found = CL_FALSE;
 
+  POCL_GOTO_ERROR_COND ((context == NULL), CL_INVALID_CONTEXT);
+
+  POCL_GOTO_ERROR_COND ((device == NULL), CL_INVALID_DEVICE);
+
   POCL_MSG_PRINT_INFO("Create Command queue on device %d\n", device->dev_id);
 
   /* validate flags */
   POCL_GOTO_ERROR_ON((properties > (1<<2)-1), CL_INVALID_VALUE,
             "Properties must be <= 3 (there are only 2)\n");
 
-  if (pocl_debug_messages)
+  if (POCL_DEBUGGING_ON)
     properties |= CL_QUEUE_PROFILING_ENABLE;
 
   for (i=0; i<context->num_devices; i++)
     {
-      if (context->devices[i] == POCL_REAL_DEV(device))
+      if (context->devices[i] == pocl_real_dev (device))
         found = CL_TRUE;
     }
 

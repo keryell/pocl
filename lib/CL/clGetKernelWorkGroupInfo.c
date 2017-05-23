@@ -24,11 +24,11 @@ POname(clGetKernelWorkGroupInfo)
       unsigned i;
       int found_it = 0;
       for (i = 0; i < kernel->context->num_devices; i++)
-        if (POCL_REAL_DEV(device) == kernel->context->devices[i])
-        {
-          found_it = 1;
-          break;
-        }
+        if (pocl_real_dev (device) == kernel->context->devices[i])
+          {
+            found_it = 1;
+            break;
+          }
       POCL_RETURN_ERROR_ON((!found_it), CL_INVALID_DEVICE, "could not find the "
         "device supplied in argument\n");
     }
@@ -49,12 +49,10 @@ POname(clGetKernelWorkGroupInfo)
     case CL_KERNEL_COMPILE_WORK_GROUP_SIZE:
     {
         typedef struct { size_t size[3]; } size_t_3;
-#if 0
-        printf("### reqd wg sizes %d %d %d\n", 
-               kernel->reqd_wg_size[0], 
-               kernel->reqd_wg_size[1], 
+        POCL_MSG_PRINT_GENERAL ("### reqd wg sizes %d %d %d\n",
+               kernel->reqd_wg_size[0],
+               kernel->reqd_wg_size[1],
                kernel->reqd_wg_size[2]);
-#endif
         POCL_RETURN_GETINFO(size_t_3, *(size_t_3*)kernel->reqd_wg_size);
     }
       

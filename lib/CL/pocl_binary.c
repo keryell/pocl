@@ -47,12 +47,6 @@
   #define le64toh(x) OSSwapLittleToHostInt64(x)
 #endif
 
-#if defined(WORDS_BIGENDIAN) && WORDS_BIGENDIAN == 1
-  static const char host_endian = 1;
-#else
-  static const char host_endian = 0;
-#endif
-
 /* pocl binary identifier */
 #define POCLCC_STRING_ID "poclbin"
 #define POCLCC_STRING_ID_LENGTH 8
@@ -503,11 +497,11 @@ pocl_binary_deserialize_kernel_from_buffer (unsigned char **buf,
 
   if (name_len > 0 && name_match)
     {
+      *buf = *buf + kernel->struct_size;
+      if (kernel->sizeof_kernel_name != name_len)
+          return CL_INVALID_KERNEL_NAME;
       if (strncmp (kernel->kernel_name, name_match, kernel->sizeof_kernel_name))
-        {
-          *buf = *buf + kernel->struct_size;
-          return -11111;
-        }
+          return CL_INVALID_KERNEL_NAME;
 
       kernel->dyn_arguments = calloc ((kernel->num_args + kernel->num_locals),
                                       sizeof(struct pocl_argument));
@@ -689,7 +683,8 @@ pocl_binary_get_kernel_metadata (unsigned char *binary, const char *kernel_name,
   kernel->arg_info = k.arg_info;
   free (k.kernel_name);
 
-  POCL_RETURN_ERROR_COND ((kernel->reqd_wg_size = calloc(3, sizeof(int))) == NULL,
+  POCL_RETURN_ERROR_COND ((kernel->reqd_wg_size = calloc (3, sizeof (size_t)))
+                              == NULL,
                           CL_OUT_OF_HOST_MEMORY);
 
   return CL_SUCCESS;

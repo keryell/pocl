@@ -26,14 +26,18 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <time.h>
 
 #ifndef _MSC_VER
-#  include <dirent.h>
-#  include <unistd.h>
-#  include <utime.h>
+#include <dirent.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <unistd.h>
+#include <utime.h>
 #else
 #  include "vccompat.hpp"
 #endif
@@ -191,7 +195,7 @@ cl_int pocl_create_event (cl_event *event, cl_command_queue command_queue,
   if (event != NULL)
     {
       *event = pocl_mem_manager_new_event ();
-      if (event == NULL)
+      if (*event == NULL)
         return CL_OUT_OF_HOST_MEMORY;
 
       (*event)->context = context;
@@ -310,12 +314,15 @@ cl_int pocl_create_command (_cl_command_node **cmd,
       return err;
     }
   (*event)->command_type = command_type;
+
+  /* if host application wants this commands event
+     one reference for the host and one for the runtime/driver */
   if (event_p)
     {
       *event_p = *event;
       (*event)->implicit_event = 0;
       (*event)->pocl_refcount = 2;
-    }  
+    }
   else
     {
       (*event)->implicit_event = 1;
@@ -328,6 +335,8 @@ cl_int pocl_create_command (_cl_command_node **cmd,
   (*cmd)->event->command = (*cmd);
   (*cmd)->ready = 0;
 
+  /* in case of in-order queue, synchronize to previously enqueued command
+     if available */
   if (!(command_queue->properties & CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE))
     {
       POCL_LOCK_OBJ (command_queue);
@@ -341,7 +350,7 @@ cl_int pocl_create_command (_cl_command_node **cmd,
         }
       POCL_UNLOCK_OBJ (command_queue);
     }
-  /* Form the wait list for command */
+  /* Form event synchronizations based on the given wait list */
   for (i = 0; i < num_events; ++i)
     {
       cl_event wle = wait_list[i];
@@ -349,8 +358,8 @@ cl_int pocl_create_command (_cl_command_node **cmd,
       pocl_create_event_sync ((*cmd)->event, wle, NULL);
       POCL_UNLOCK_OBJ (wle);
     }
-  POCL_MSG_PRINT_INFO("Created command struct (event %d, type %X)\n", 
-                      (*cmd)->event->id, command_type);
+  POCL_MSG_PRINT_EVENTS ("Created command struct (event %d, type %X)\n",
+                         (*cmd)->event->id, command_type);
   return CL_SUCCESS;
 }
 
@@ -471,12 +480,14 @@ cl_int pocl_update_mem_obj_sync (cl_command_queue cq, _cl_command_node *cmd,
 }
 
 int pocl_buffer_boundcheck(cl_mem buffer, size_t offset, size_t size) {
-  POCL_RETURN_ERROR_ON((offset > buffer->size), CL_INVALID_VALUE,
-            "offset(%zu) > buffer->size(%zu)", offset, buffer->size);
-  POCL_RETURN_ERROR_ON((size > buffer->size), CL_INVALID_VALUE,
-            "size(%zu) > buffer->size(%zu)", size, buffer->size);
-  POCL_RETURN_ERROR_ON((offset + size > buffer->size), CL_INVALID_VALUE,
-            "offset + size (%zu) > buffer->size(%zu)", (offset+size), buffer->size);
+  POCL_RETURN_ERROR_ON ((offset > buffer->size), CL_INVALID_VALUE,
+                        "offset(%zu) > buffer->size(%zu)\n", offset,
+                        buffer->size);
+  POCL_RETURN_ERROR_ON ((size > buffer->size), CL_INVALID_VALUE,
+                        "size(%zu) > buffer->size(%zu)\n", size, buffer->size);
+  POCL_RETURN_ERROR_ON ((offset + size > buffer->size), CL_INVALID_VALUE,
+                        "offset + size (%zu) > buffer->size(%zu)\n",
+                        (offset + size), buffer->size);
   return CL_SUCCESS;
 }
 
@@ -677,6 +688,15 @@ check_copy_overlap(const size_t src_offset[3],
   return overlap;
 }
 
+/* For a subdevice parameter, return the actual device it belongs to. */
+cl_device_id
+pocl_real_dev (const cl_device_id dev)
+{
+  cl_device_id ret = dev;
+  while (ret->parent_device)
+    ret = ret->parent_device;
+  return ret;
+}
 
 /* Make a list of unique devices. If any device is a subdevice,
  * replace with parent, then remove duplicate parents. */
@@ -689,7 +709,7 @@ cl_device_id * pocl_unique_device_list(const cl_device_id * in, cl_uint num, cl_
 
   unsigned i;
   for (i=0; i < num; ++i)
-    out[i] = (in[i] ? POCL_REAL_DEV(in[i]) : NULL);
+    out[i] = (in[i] ? pocl_real_dev (in[i]) : NULL);
 
   i=1;
   unsigned device_i=0;
@@ -734,6 +754,35 @@ void pocl_setup_context(cl_context context)
           context->svm_allocdev = context->devices[i];
           break;
         }
+}
+
+int
+pocl_check_event_wait_list (cl_command_queue command_queue,
+                            cl_uint num_events_in_wait_list,
+                            const cl_event *event_wait_list)
+{
+  POCL_RETURN_ERROR_COND (
+      (event_wait_list == NULL && num_events_in_wait_list > 0),
+      CL_INVALID_EVENT_WAIT_LIST);
+
+  POCL_RETURN_ERROR_COND (
+      (event_wait_list != NULL && num_events_in_wait_list == 0),
+      CL_INVALID_EVENT_WAIT_LIST);
+
+  if (event_wait_list)
+    {
+      unsigned i;
+      for (i = 0; i < num_events_in_wait_list; i++)
+        {
+          POCL_RETURN_ERROR_COND ((event_wait_list[i] == NULL),
+                                  CL_INVALID_EVENT_WAIT_LIST);
+          POCL_RETURN_ERROR_COND (
+              (event_wait_list[i]->context != command_queue->context),
+              CL_INVALID_CONTEXT);
+        }
+    }
+
+  return CL_SUCCESS;
 }
 
 const char*
@@ -818,4 +867,49 @@ pocl_command_to_str (cl_command_type cmd)
     }
 
   return "unknown";
+}
+
+/*
+ * This replaces a simple system(), because:
+ *
+ * 1) system() was causing issues (gpu lockups) with HSA when
+ * compiling code (via compile_parallel_bc_to_brig)
+ * with OpenCL 2.0 atomics (like CalcPie from AMD SDK).
+ * The reason of lockups is unknown (yet).
+ *
+ * 2) system() uses fork() which copies page table maps, and runs
+ * out of AS when pocl has already allocated huge buffers in memory.
+ * this happened in llvm_codegen()
+ *
+ * vfork() does not copy pagetables.
+ */
+int
+pocl_run_command (char *const *args)
+{
+  POCL_MSG_PRINT_INFO ("Launching: %s\n", args[0]);
+#ifdef HAVE_VFORK
+  pid_t p = vfork ();
+#elif defined(HAVE_FORK)
+  pid_t p = fork ();
+#else
+#error Must have fork() or vfork() system calls for HSA
+#endif
+  if (p == 0)
+    {
+      return execv (args[0], args);
+    }
+  else
+    {
+      if (p < 0)
+        return EXIT_FAILURE;
+      int status;
+      if (waitpid (p, &status, 0) < 0)
+        POCL_ABORT ("pocl: waitpid() failed.\n");
+      if (WIFEXITED (status))
+        return WEXITSTATUS (status);
+      else if (WIFSIGNALED (status))
+        return WTERMSIG (status);
+      else
+        return EXIT_FAILURE;
+    }
 }

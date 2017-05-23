@@ -51,10 +51,6 @@ set(ALL_TESTSUITES
     Parboil piglit PyOpenCL
     Rodinia VexCL ViennaCL)
 
-if(NOT DEFINED ENABLE_TESTSUITES)
-  set(ENABLE_TESTSUITES "all")
-endif()
-
 if("${ENABLE_TESTSUITES}" STREQUAL "all")
   set(ENABLE_TESTSUITES ${ALL_TESTSUITES})
 endif()
@@ -64,13 +60,11 @@ include(ExternalProject)
 # invoke this to build all examples
 add_custom_target(prepare_examples)
 
-if(ENABLE_TESTSUITES AND (NOT DEFINED ACTUALLY_ENABLED_TESTSUITES))
+if(ENABLE_TESTSUITES)
 
-    unset(CMAKE_MODULE_PATH) # Use CMake builtin find module
-    find_package(Git QUIET)
-    set_expr(HAVE_GIT GIT_EXECUTABLE)
-    find_package(Subversion QUIET)
-    set_expr(HAVE_SVN Subversion_SVN_EXECUTABLE)
+  unset(CMAKE_MODULE_PATH) # Use CMake builtin find module
+  find_package(Git QUIET)
+  set_expr(HAVE_GIT GIT_EXECUTABLE)
 
   message(STATUS "Trying to enable testsuites: ${ENABLE_TESTSUITES}")
 
@@ -108,7 +102,6 @@ if(ENABLE_TESTSUITES AND (NOT DEFINED ACTUALLY_ENABLED_TESTSUITES))
     endif()
   endforeach()
 
-  set(ACTUALLY_ENABLED_TESTSUITES "${ACTUALLY_ENABLED_TESTSUITES}" CACHE STRING "Actually available & enabled testsuites")
 endif()
 
 set(ACTUALLY_ENABLED_TESTSUITES ${ACTUALLY_ENABLED_TESTSUITES} PARENT_SCOPE)
@@ -123,11 +116,9 @@ set(DISABLED_TESTSUITES ${DISABLED} PARENT_SCOPE)
 
 ######################################################################################
 
-if(ACTUALLY_ENABLED_TESTSUITES MATCHES "AMD")
+if((ACTUALLY_ENABLED_TESTSUITES MATCHES "AMD") AND (NOT MSVC))
 
-  if(NOT MSVC)
-    pkg_check_modules(GLEW glew)
-  endif()
+  pkg_check_modules(GLEW glew)
 
   if(GLEW_FOUND)
     set(HAVE_GLEW 1 PARENT_SCOPE)

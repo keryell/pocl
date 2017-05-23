@@ -526,6 +526,8 @@ TargetAddressSpaces::runOnModule(llvm::Module &M) {
     return false;
 #endif
 
+  assert(!arch.startswith("nvptx"));
+
   std::map<unsigned, unsigned> addrSpaceMapUp;
 
   addrSpaceMapUp[POCL_FAKE_AS_GLOBAL] = POCL_AS_FAKE_GLOBAL;

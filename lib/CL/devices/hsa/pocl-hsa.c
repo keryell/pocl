@@ -184,7 +184,12 @@ typedef struct pocl_hsa_device_data_s {
 
   /* if agent supports async handlers*/
   int have_wait_any;
+
+  /* compilation lock */
+  pocl_lock_t pocl_hsa_compilation_lock;
 } pocl_hsa_device_data_t;
+
+
 
 void
 pocl_hsa_init_device_ops(struct pocl_device_ops *ops)
@@ -239,7 +244,7 @@ pocl_hsa_abort_on_hsa_error(hsa_status_t status,
   if (status != HSA_STATUS_SUCCESS)
     {
       hsa_status_string(status, &str);
-      POCL_MSG_PRINT2(func, line, "Error from HSA Runtime call:\n");
+      POCL_MSG_PRINT2(HSA, func, line, "Error from HSA Runtime call:\n");
       POCL_ABORT("%s", str);
     }
 }
@@ -258,7 +263,7 @@ pocl_hsa_abort_on_pthread_error(int status,
 {
   if (status != 0)
     {
-      POCL_MSG_PRINT2(func, line, "Error from pthread call:\n");
+      POCL_MSG_PRINT2(HSA, func, line, "Error from pthread call:\n");
       POCL_ABORT("%s", strerror(status));
     }
 }
@@ -269,7 +274,6 @@ pocl_hsa_abort_on_pthread_error(int status,
                                                             #code);
 
 static hsa_agent_t hsa_agents[MAX_HSA_AGENTS];
-static intptr_t last_assigned_agent = 0;
 static int found_hsa_agents = 0;
 
 static hsa_status_t
@@ -440,9 +444,9 @@ get_hsa_device_features(char* dev_name, struct _cl_device_id* dev)
 }
 
 void
-pocl_hsa_init_device_infos(struct _cl_device_id* dev)
+pocl_hsa_init_device_infos(unsigned j, struct _cl_device_id* dev)
 {
-  pocl_basic_init_device_infos (dev);
+  pocl_basic_init_device_infos (j, dev);
 
   SETUP_DEVICE_CL_VERSION(HSA_DEVICE_CL_VERSION_MAJOR,
                           HSA_DEVICE_CL_VERSION_MINOR)
@@ -454,10 +458,10 @@ pocl_hsa_init_device_infos(struct _cl_device_id* dev)
   dev->local_as_id = 3;
   dev->constant_as_id = 2;
 
-  assert(found_hsa_agents > 0);
-  assert(last_assigned_agent < found_hsa_agents);
-  dev->data = (void*)last_assigned_agent;
-  hsa_agent_t agent = hsa_agents[last_assigned_agent++];
+  assert (found_hsa_agents > 0);
+  assert (j < found_hsa_agents);
+  dev->data = (void*)(uintptr_t)j;
+  hsa_agent_t agent = hsa_agents[j];
 
   uint32_t cache_sizes[4];
   HSA_CHECK(hsa_agent_get_info (agent, HSA_AGENT_INFO_CACHE_SIZE,
@@ -583,7 +587,6 @@ pocl_hsa_probe(struct pocl_device_ops *ops)
   HSA_CHECK(hsa_iterate_agents(pocl_hsa_get_agents_callback, NULL));
 
   POCL_MSG_PRINT_INFO("pocl-hsa: found %d agents.\n", found_hsa_agents);
-  last_assigned_agent = 0;
 
   return found_hsa_agents;
 }
@@ -596,14 +599,16 @@ hsa_queue_callback(hsa_status_t status, hsa_queue_t *q, void* data) {
 /* driver pthread prototype */
 void * pocl_hsa_driver_pthread (void *cldev);
 
-void
-pocl_hsa_init (cl_device_id device, const char* parameters)
+cl_int
+pocl_hsa_init (unsigned j, cl_device_id device, const char* parameters)
 {
   pocl_hsa_device_data_t *d;
 
   device->global_mem_id = 0;
 
   d = (pocl_hsa_device_data_t *) calloc (1, sizeof(pocl_hsa_device_data_t));
+
+  POCL_INIT_LOCK (d->pocl_hsa_compilation_lock);
 
   intptr_t agent_index = (intptr_t)device->data;
   d->agent.handle = hsa_agents[agent_index].handle;
@@ -691,6 +696,7 @@ pocl_hsa_init (cl_device_id device, const char* parameters)
   d->exit_driver_thread = 0;
   PTHREAD_CHECK(pthread_create(&d->driver_pthread_id, NULL,
                  &pocl_hsa_driver_pthread, device));
+  return CL_SUCCESS;
 }
 
 static void*
@@ -934,41 +940,6 @@ setup_kernel_args (pocl_hsa_device_data_t *d,
 #endif
 }
 
-/*
- * This replaces a simple system(), because system() was causing issues
- * (gpu lockups) when compiling code (via compile_parallel_bc_to_brig)
- * with OpenCL 2.0 atomics (like CalcPie from AMD SDK).
- * The reason of lockups is unknown (yet).
- */
-static int
-run_command(char* args[])
-{
-  POCL_MSG_PRINT_INFO("Launching: %s\n", args[0]);
-#ifdef HAVE_VFORK
-  pid_t p = vfork();
-#elif defined(HAVE_FORK)
-  pid_t p = fork();
-#else
-#error Must have fork() or vfork() system calls for HSA
-#endif
-  if (p == 0)
-    {
-      return execv(args[0], args);
-    }
-  else
-    {
-      if (p < 0)
-        return -1;
-      int status;
-      if (waitpid(p, &status, 0) < 0)
-        POCL_ABORT("pocl-hsa: waitpid() itself failed.\n");
-      if (WIFEXITED(status))
-        return WEXITSTATUS(status);
-      else
-        return -2;
-    }
-}
-
 static int
 compile_parallel_bc_to_brig(char* brigfile, cl_kernel kernel,
                             cl_device_id device) {
@@ -998,14 +969,14 @@ compile_parallel_bc_to_brig(char* brigfile, cl_kernel kernel,
 
       char* args1[] = { LLVM_LLC, "-O2", "-march=hsail64", "-filetype=asm",
                         "-o", hsailfile, parallel_bc_path, NULL };
-      if ((error = run_command(args1)))
+      if ((error = pocl_run_command (args1)))
         {
           POCL_MSG_PRINT_INFO("pocl-hsa: llc exit status %i\n", error);
           return error;
         }
 
       char* args2[] = { HSAIL_ASM, "-o", brigfile, hsailfile, NULL };
-      if ((error = run_command(args2)))
+      if ((error = pocl_run_command (args2)))
         {
           POCL_MSG_PRINT_INFO("pocl-hsa: HSAILasm exit status %i\n", error);
           return error;
@@ -1027,12 +998,26 @@ pocl_hsa_compile_kernel (_cl_command_node *cmd, cl_kernel kernel,
 
   hsa_executable_t final_obj;
 
+  POCL_LOCK (d->pocl_hsa_compilation_lock);
+
+  int error = pocl_llvm_generate_workgroup_function (device, kernel,
+                                        cmd->command.run.local_x,
+                                        cmd->command.run.local_y,
+                                        cmd->command.run.local_z);
+  if (error)
+    {
+      POCL_MSG_PRINT_GENERAL ("HSA: pocl_llvm_generate_workgroup_function()"
+                              " failed for kernel %s\n", kernel->name);
+      assert (error == 0);
+    }
+
   unsigned i;
   for (i = 0; i<HSA_KERNEL_CACHE_SIZE; i++)
     if (d->kernel_cache[i].kernel == kernel)
       {
         POCL_MSG_PRINT_INFO("kernel.hsa_exe found in"
                             " kernel cache, returning\n");
+        POCL_UNLOCK (d->pocl_hsa_compilation_lock);
         return;
       }
 
@@ -1136,6 +1121,7 @@ pocl_hsa_compile_kernel (_cl_command_node *cmd, cl_kernel kernel,
        kernel_symbol, HSA_EXECUTABLE_SYMBOL_INFO_KERNEL_KERNARG_SEGMENT_SIZE,
        &d->kernel_cache[i].args_segment_size));
 
+  POCL_UNLOCK (d->pocl_hsa_compilation_lock);
 }
 
 void
@@ -1164,6 +1150,8 @@ pocl_hsa_uninit (cl_device_id device)
   hsa_signal_destroy(d->nudge_driver_thread);
 
   PTHREAD_CHECK(pthread_mutex_destroy(&d->list_mutex));
+
+  POCL_DESTROY_LOCK (d->pocl_hsa_compilation_lock);
 
   POCL_MEM_FREE(d);
   device->data = NULL;
